@@ -1,0 +1,25 @@
+kubeai-chatbot
+Copyright 2025 KongZ
+
+This product includes software developed by Google Cloud Platform
+(https://github.com/GoogleCloudPlatform/kubectl-ai) under the Apache License 2.0.
+
+This product is a derivative work based on kubectl-ai, which was originally
+developed by Google LLC and contributors. The original source code has been
+modified and adapted for use as a Slack-focused Kubernetes chatbot.
+
+Original Project: kubectl-ai
+Original Copyright: Copyright 2024-2025 Google LLC
+Original License: Apache License 2.0
+Original Repository: https://github.com/GoogleCloudPlatform/kubectl-ai
+
+Modifications:
+- Implemented Slack integration functionality and make it as a standalone application
+- Simplified configuration to focus on Slack bot deployment
+- Renamed module from github.com/GoogleCloudPlatform/kubectl-ai to github.com/KongZ/kubeai-chatbot
+- Created new main.go entrypoint for Slack-only operation
+- Removed CLI and terminal UI components
+
+All original copyright notices and license headers have been preserved in
+the source files. This derivative work is also licensed under the Apache
+License 2.0.
