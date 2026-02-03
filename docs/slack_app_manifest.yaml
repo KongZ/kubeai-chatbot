@@ -1,0 +1,34 @@
+_metadata:
+  major_version: 1
+  minor_version: 1
+display_information:
+  name: KubeAI Chatbot
+  description: AI Kubernetes assistant with native visualization and safety controls.
+  background_color: "#2c3e50"
+features:
+  bot_user:
+    display_name: KubeAI
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - chat:write
+      - files:write
+      - reactions:write
+      - channels:history
+      - groups:history
+      - im:history
+      - mpim:history
+settings:
+  event_subscriptions:
+    request_url: https://your-domain.com/slack/events
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

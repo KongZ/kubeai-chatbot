@@ -1,3 +1,17 @@
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package slack
 
 import (
@@ -10,6 +24,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/agent"
@@ -25,6 +40,8 @@ import (
 type SlackAPI interface {
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
 	UploadFileV2(params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
+	AddReaction(name string, item slack.ItemRef) error
+	RemoveReaction(name string, item slack.ItemRef) error
 }
 
 // AgentManager defines the interface for agent management methods used by SlackUI
@@ -43,12 +60,18 @@ type SlackUI struct {
 	defaultProvider string
 	botToken        string
 	signingSecret   string
+	agentName       string
+	contextMessage  string
 	apiClient       SlackAPI
+
+	mu              sync.Mutex
+	processedEvents map[string]time.Time
+	activeTriggers  map[string]string // sessionID -> user message ts
 }
 
 var _ ui.UI = &SlackUI{}
 
-func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, defaultModel, defaultProvider, listenAddress string) (*SlackUI, error) {
+func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, defaultModel, defaultProvider, listenAddress, agentName, contextMessage string) (*SlackUI, error) {
 	botToken := os.Getenv("SLACK_BOT_TOKEN")
 	signingSecret := os.Getenv("SLACK_SIGNING_SECRET")
 	if botToken == "" || signingSecret == "" {
@@ -64,7 +87,11 @@ func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, d
 		defaultProvider: defaultProvider,
 		botToken:        botToken,
 		signingSecret:   signingSecret,
+		agentName:       agentName,
+		contextMessage:  contextMessage,
 		apiClient:       apiClient,
+		processedEvents: make(map[string]time.Time),
+		activeTriggers:  make(map[string]string),
 	}
 
 	// Register callback to listen to new agents
@@ -163,16 +190,52 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 
 	if eventsAPIEvent.Type == slackevents.CallbackEvent {
 		innerEvent := eventsAPIEvent.InnerEvent
+		var channel, ts, threadTs, text string
+
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.AppMentionEvent:
-			s.processMessage(ev.Channel, ev.ThreadTimeStamp, ev.TimeStamp, ev.Text)
+			channel, ts, threadTs, text = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text
 		case *slackevents.MessageEvent:
 			// Ignore messages from bots to prevent loops
-			if ev.BotID != "" {
+			if ev.BotID != "" || ev.SubType == "bot_message" {
+				w.WriteHeader(http.StatusOK)
 				return
 			}
-			s.processMessage(ev.Channel, ev.ThreadTimeStamp, ev.TimeStamp, ev.Text)
+			channel, ts, threadTs, text = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text
+		default:
+			w.WriteHeader(http.StatusOK)
+			return
 		}
+
+		// De-duplicate: Slack might send both app_mention and message events for the same mention
+		// or retry if we are slow.
+		msgID := fmt.Sprintf("%s:%s", channel, ts)
+		s.mu.Lock()
+		if _, ok := s.processedEvents[msgID]; ok {
+			s.mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Cleanup old entries (older than 10 mins) every 100 messages to avoid leak
+		if len(s.processedEvents) > 100 {
+			now := time.Now()
+			for k, v := range s.processedEvents {
+				if now.Sub(v) > 10*time.Minute {
+					delete(s.processedEvents, k)
+				}
+			}
+		}
+
+		s.processedEvents[msgID] = time.Now()
+		s.mu.Unlock()
+
+		// Acknowledge immediately to Slack to avoid retries
+		w.WriteHeader(http.StatusOK)
+
+		// Process in background
+		go s.processMessage(channel, threadTs, ts, text)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -229,6 +292,14 @@ func (s *SlackUI) processMessage(channel, threadTS, ts, text string) {
 		return
 	}
 
+	// Add typing indicator reaction
+	s.mu.Lock()
+	s.activeTriggers[sessionID] = ts
+	s.mu.Unlock()
+	if err := s.apiClient.AddReaction("ok_hand", slack.NewRefToMessage(channel, ts)); err != nil {
+		klog.Warningf("Failed to add ok_hand reaction: %v", err)
+	}
+
 	// Send message to agent
 	agent.Input <- &api.UserInputResponse{Query: processedText}
 }
@@ -251,29 +322,47 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 
 	// Start a single goroutine for this agent's lifetime
 	go func() {
+		indicatorRemoved := false
 		for msg := range a.Output {
 			apiMsg, ok := msg.(*api.Message)
 			if !ok {
 				continue
 			}
 
+			// Remove typing indicator on first message from agent
+			if !indicatorRemoved {
+				s.mu.Lock()
+				triggerTS, exists := s.activeTriggers[sessionID]
+				if exists {
+					delete(s.activeTriggers, sessionID)
+					s.mu.Unlock()
+					if err := s.apiClient.RemoveReaction("thinking_face", slack.NewRefToMessage(channel, triggerTS)); err != nil {
+						klog.Warningf("Failed to remove thinking reaction: %v", err)
+					}
+				} else {
+					s.mu.Unlock()
+				}
+				indicatorRemoved = true
+			}
+
 			// Only post agent or model messages to Slack
 			if apiMsg.Source == api.MessageSourceAgent || apiMsg.Source == api.MessageSourceModel {
 				if text, ok := apiMsg.Payload.(string); ok && text != ">>>" {
-					s.postToSlack(channel, threadTS, text)
+					if apiMsg.Type == api.MessageTypeToolCallRequest {
+						// Wrap tool calls in code blocks for better visibility
+						text = "```\n" + text + "\n```"
+					}
+					isFinal := false
+					if apiMsg.Metadata != nil && apiMsg.Metadata["is_final"] == "true" {
+						isFinal = true
+					}
+					s.postToSlack(channel, threadTS, text, isFinal)
 				} else if choiceReq, ok := apiMsg.Payload.(*api.UserChoiceRequest); ok {
 					prompt := choiceReq.Prompt
-					// Attempt to identify and format command if it looks like one and isn't already formatted
-					// Common pattern: "I will run the following command: <command>"
-					// If the command is not in backticks, let's try to put it in a code block.
-					// A simple heuristic: if the prompt ends with a command like "kubectl ...", wrap it.
-					// Or just simpler: let formatForSlack handle detection if we improve it,
-					// OR explicitly look for "kubectl" commands here.
-
+					// Attempt to identify and format command
 					if strings.Contains(prompt, "kubectl") && !strings.Contains(prompt, "```") && !strings.Contains(prompt, "`") {
 						// This is a naive heuristic but might help.
 						// Better: let's try to split by "command:" or similar keywords if present.
-						// Agent often says: "I will run the following command: kubectl get pods"
 						parts := strings.SplitN(prompt, "command:", 2)
 						if len(parts) == 2 {
 							pre := strings.TrimSpace(parts[0])
@@ -281,9 +370,9 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 							prompt = fmt.Sprintf("%s command:\n```%s```", pre, cmd)
 						}
 					}
-					s.postToSlack(channel, threadTS, prompt)
+					s.postToSlack(channel, threadTS, prompt, true)
 				} else if errPayload, ok := apiMsg.Payload.(error); ok {
-					s.postToSlack(channel, threadTS, "Error: "+errPayload.Error())
+					s.postToSlack(channel, threadTS, "Error: "+errPayload.Error(), true)
 				}
 			}
 		}
@@ -291,21 +380,207 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 	}()
 }
 
-func (s *SlackUI) postToSlack(channel, threadTS, text string) {
+func (s *SlackUI) postToSlack(channel, threadTS, text string, includeContext bool) {
 	if isComplexOrLong(text) {
 		s.uploadSnippet(channel, threadTS, text)
 		return
 	}
 
-	formattedText := formatForSlack(text)
+	blocks := s.generateBlocks(text, includeContext)
+
+	// Debug logging of blocks (Trace-level: v=4)
+	if klog.V(4).Enabled() {
+		if blockJSON, err := json.Marshal(blocks); err == nil {
+			klog.Infof("Posting to Slack channel %s: %s", channel, string(blockJSON))
+		}
+	}
+
+	// Fallback text for notifications
+	fallback := text
+	if len(fallback) > 150 {
+		fallback = fallback[:150] + "..."
+	}
 
 	_, _, err := s.apiClient.PostMessage(channel,
-		slack.MsgOptionText(formattedText, false),
+		slack.MsgOptionText(fallback, false),
+		slack.MsgOptionBlocks(blocks...),
 		slack.MsgOptionTS(threadTS),
 	)
 	if err != nil {
 		klog.Errorf("Failed to post message to Slack: %v", err)
 	}
+}
+
+func (s *SlackUI) getContextBlock() slack.Block {
+	contextText := fmt.Sprintf("%s: %s", s.agentName, s.contextMessage)
+	return slack.NewContextBlock("",
+		slack.NewTextBlockObject(slack.MarkdownType, contextText, false, false),
+	)
+}
+
+func (s *SlackUI) generateBlocks(text string, includeContext bool) []slack.Block {
+	blocks := s.markdownToBlocks(text)
+	if includeContext {
+		blocks = append(blocks, s.getContextBlock())
+	}
+	return blocks
+}
+
+func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
+	var blocks []slack.Block
+	lines := strings.Split(text, "\n")
+
+	var currentParagraph []string
+	var tableLines []string
+	inTable := false
+
+	flushParagraph := func() {
+		if len(currentParagraph) > 0 {
+			paraText := strings.TrimSpace(strings.Join(currentParagraph, "\n"))
+			if paraText != "" {
+				blocks = append(blocks, slack.NewSectionBlock(
+					slack.NewTextBlockObject(slack.MarkdownType, formatForSlack(paraText), false, false),
+					nil, nil,
+				))
+			}
+			currentParagraph = nil
+		}
+	}
+
+	flushTable := func() {
+		if len(tableLines) > 0 {
+			headers, rows := s.parseMarkdownTable(tableLines)
+			if (len(headers) > 0 || len(rows) > 0) && len(headers) <= 10 && len(rows) <= 10 {
+				blocks = append(blocks, NewTableBlock(headers, rows))
+			} else if len(headers) > 0 {
+				// Fallback to code block if table is too big for native TableBlock
+				// or if it's missing the separator (though parseMarkdownTable checks that)
+				tableText := strings.Join(tableLines, "\n")
+				blocks = append(blocks, slack.NewSectionBlock(
+					slack.NewTextBlockObject(slack.MarkdownType, "```\n"+tableText+"\n```", false, false),
+					nil, nil,
+				))
+			} else {
+				// Not a valid table, treat as paragraph
+				currentParagraph = append(currentParagraph, tableLines...)
+			}
+			tableLines = nil
+		}
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check for headers (e.g., # Header, ## Header, ### Header)
+		isHeader := strings.HasPrefix(trimmed, "# ") || strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "### ")
+
+		if isHeader {
+			flushParagraph()
+			flushTable()
+			headerText := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			blocks = append(blocks, slack.NewHeaderBlock(
+				slack.NewTextBlockObject(slack.PlainTextType, headerText, false, false),
+			))
+			inTable = false
+			continue
+		}
+
+		isTableRow := strings.HasPrefix(trimmed, "|") || (strings.Contains(trimmed, "|") && len(strings.Split(trimmed, "|")) > 2)
+
+		if isTableRow {
+			if !inTable {
+				flushParagraph()
+				inTable = true
+			}
+			tableLines = append(tableLines, line)
+		} else {
+			if inTable {
+				// Check if we were just in a table
+				// If strictly transitioning out, check if it was really a table (had separator)
+				hasSeparator := false
+				for _, tl := range tableLines {
+					if strings.Contains(tl, "---") {
+						hasSeparator = true
+						break
+					}
+				}
+
+				if hasSeparator {
+					flushTable()
+				} else {
+					currentParagraph = append(currentParagraph, tableLines...)
+					tableLines = nil
+				}
+				inTable = false
+			}
+			currentParagraph = append(currentParagraph, line)
+		}
+	}
+
+	// Final flushes
+	if inTable {
+		hasSeparator := false
+		for _, tl := range tableLines {
+			if strings.Contains(tl, "---") {
+				hasSeparator = true
+				break
+			}
+		}
+		if hasSeparator {
+			flushTable()
+		} else {
+			currentParagraph = append(currentParagraph, tableLines...)
+		}
+	}
+	flushParagraph()
+
+	return blocks
+}
+
+func (s *SlackUI) parseMarkdownTable(lines []string) ([]string, [][]string) {
+	var headers []string
+	var rows [][]string
+
+	seenSeparator := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "---") && (strings.HasPrefix(trimmed, "|") || strings.Contains(trimmed, "-|-")) {
+			seenSeparator = true
+			continue
+		}
+
+		// Split by | and clean up
+		parts := strings.Split(line, "|")
+		var cells []string
+		for _, cell := range parts {
+			c := strings.TrimSpace(cell)
+			if c == "" && (cell == parts[0] || cell == parts[len(parts)-1]) {
+				// skip the outer empty parts from | cell | cell |
+				continue
+			}
+			cells = append(cells, c)
+		}
+
+		if len(cells) == 0 {
+			continue
+		}
+
+		if headers == nil {
+			headers = cells
+		} else if seenSeparator {
+			rows = append(rows, cells)
+		} else {
+			// This might be the header again if we haven't seen separator?
+			// In standard MD, header is before separator.
+			headers = cells
+		}
+	}
+
+	if !seenSeparator {
+		return nil, nil
+	}
+
+	return headers, rows
 }
 
 func (s *SlackUI) uploadSnippet(channel, threadTS, text string) {
@@ -338,73 +613,6 @@ func (s *SlackUI) uploadSnippet(channel, threadTS, text string) {
 func formatForSlack(text string) string {
 	// Simple Markdown to mrkdwn conversion
 
-	// 0. Tables: Detect Markdown tables and wrap them in code blocks
-	// Look for a block that has a separator line | --- |
-	if strings.Contains(text, "|") && strings.Contains(text, "---") {
-		// Identify lines that look like table rows
-		lines := strings.Split(text, "\n")
-		var newLines []string
-		inTable := false
-		tableBuffer := []string{}
-
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			isTableRow := strings.HasPrefix(trimmed, "|") || (strings.Contains(trimmed, "|") && len(strings.Split(trimmed, "|")) > 2)
-
-			if isTableRow {
-				if !inTable {
-					// Check if this is potentially the start of a table (header)
-					// But we only truly know it's a table if we see a separator later...
-					// This is tricky line-by-line.
-					// Alternative: Just detect blocks.
-					inTable = true
-				}
-				tableBuffer = append(tableBuffer, line)
-			} else {
-				if inTable {
-					// processing end of table
-					// Check if the buffer actually looked like a table (had a separator)
-					hasSeparator := false
-					for _, tl := range tableBuffer {
-						if strings.Contains(tl, "---") {
-							hasSeparator = true
-							break
-						}
-					}
-
-					if hasSeparator {
-						newLines = append(newLines, "```")
-						newLines = append(newLines, tableBuffer...)
-						newLines = append(newLines, "```")
-					} else {
-						newLines = append(newLines, tableBuffer...)
-					}
-					tableBuffer = []string{}
-					inTable = false
-				}
-				newLines = append(newLines, line)
-			}
-		}
-		// flush buffer
-		if len(tableBuffer) > 0 {
-			hasSeparator := false
-			for _, tl := range tableBuffer {
-				if strings.Contains(tl, "---") {
-					hasSeparator = true
-					break
-				}
-			}
-			if hasSeparator {
-				newLines = append(newLines, "```")
-				newLines = append(newLines, tableBuffer...)
-				newLines = append(newLines, "```")
-			} else {
-				newLines = append(newLines, tableBuffer...)
-			}
-		}
-		text = strings.Join(newLines, "\n")
-	}
-
 	// 1. Triple asterisks (Bold + Italic)
 	reBoldItalic := regexp.MustCompile(`\*\*\*(.*?)\*\*\*`)
 	text = reBoldItalic.ReplaceAllString(text, `*_${1}_*`)
@@ -424,6 +632,10 @@ func formatForSlack(text string) string {
 	// 5. Links: [text](url) -> <url|text>
 	reLink := regexp.MustCompile(`\[(.*?)\]\((.*?)\)`)
 	text = reLink.ReplaceAllString(text, `<${2}|${1}>`)
+
+	// 6. Remove language identifier from code blocks: ```go -> ```
+	reCodeBlockLang := regexp.MustCompile("```[a-zA-Z0-9+#-]+")
+	text = reCodeBlockLang.ReplaceAllString(text, "```")
 
 	return text
 }

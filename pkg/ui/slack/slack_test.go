@@ -1,3 +1,17 @@
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package slack
 
 import (
@@ -21,8 +35,10 @@ import (
 
 // mockSlackAPI is a mock implementation of SlackAPI
 type mockSlackAPI struct {
-	PostMessageFunc  func(channelID string, options ...slack.MsgOption) (string, string, error)
-	UploadFileV2Func func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
+	PostMessageFunc    func(channelID string, options ...slack.MsgOption) (string, string, error)
+	UploadFileV2Func   func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
+	AddReactionFunc    func(name string, item slack.ItemRef) error
+	RemoveReactionFunc func(name string, item slack.ItemRef) error
 }
 
 func (m *mockSlackAPI) PostMessage(channelID string, options ...slack.MsgOption) (string, string, error) {
@@ -37,6 +53,20 @@ func (m *mockSlackAPI) UploadFileV2(params slack.UploadFileV2Parameters) (*slack
 		return m.UploadFileV2Func(params)
 	}
 	return nil, nil
+}
+
+func (m *mockSlackAPI) AddReaction(name string, item slack.ItemRef) error {
+	if m.AddReactionFunc != nil {
+		return m.AddReactionFunc(name, item)
+	}
+	return nil
+}
+
+func (m *mockSlackAPI) RemoveReaction(name string, item slack.ItemRef) error {
+	if m.RemoveReactionFunc != nil {
+		return m.RemoveReactionFunc(name, item)
+	}
+	return nil
 }
 
 // mockAgentManager is a mock implementation of AgentManager
@@ -90,9 +120,14 @@ func TestFormatForSlack(t *testing.T) {
 			expected: "Just plain text.",
 		},
 		{
-			name:     "table formatting",
-			input:    "Line 1\n| h1 | h2 |\n|---|---|\n| c1 | c2 |\nLine 5",
-			expected: "Line 1\n```\n| h1 | h2 |\n|---|---|\n| c1 | c2 |\n```\nLine 5",
+			name:     "table not handled in text format",
+			input:    "| h1 | h2 |\n|---|---|\n| c1 | c2 |",
+			expected: "| h1 | h2 |\n|---|---|\n| c1 | c2 |",
+		},
+		{
+			name:     "code block lang stripping",
+			input:    "Here is code:\n```go\nfunc main() {}\n```",
+			expected: "Here is code:\n```\nfunc main() {}\n```",
 		},
 	}
 
@@ -103,6 +138,44 @@ func TestFormatForSlack(t *testing.T) {
 				t.Errorf("formatForSlack() = %q, want %q", actual, tt.expected)
 			}
 		})
+	}
+}
+
+func TestMarkdownToBlocks(t *testing.T) {
+	ui := &SlackUI{
+		agentName:      "KubeAI",
+		contextMessage: "Hello",
+	}
+	text := "Hello\n\n### My Header\n\n| h1 | h2 |\n|---|---|\n| c1 | c2 |\n\nWorld"
+	blocks := ui.markdownToBlocks(text)
+
+	// Expected blocks: Section, Header, Table, Section
+	if len(blocks) != 4 {
+		t.Fatalf("expected 4 blocks, got %d", len(blocks))
+	}
+
+	// First block: Section
+	if _, ok := blocks[0].(*slack.SectionBlock); !ok {
+		t.Errorf("expected first block to be SectionBlock, got %T", blocks[0])
+	}
+
+	// Second block: Header
+	if hb, ok := blocks[1].(*slack.HeaderBlock); !ok {
+		t.Errorf("expected second block to be HeaderBlock, got %T", blocks[1])
+	} else {
+		if hb.Text.Text != "My Header" {
+			t.Errorf("expected header text 'My Header', got %q", hb.Text.Text)
+		}
+	}
+
+	// Third block: Table
+	if _, ok := blocks[2].(*TableBlock); !ok {
+		t.Errorf("expected third block to be TableBlock, got %T", blocks[2])
+	}
+
+	// Fourth block: Section
+	if _, ok := blocks[3].(*slack.SectionBlock); !ok {
+		t.Errorf("expected fourth block to be SectionBlock, got %T", blocks[3])
 	}
 }
 
@@ -150,6 +223,31 @@ func TestIsComplexOrLong(t *testing.T) {
 	}
 }
 
+func TestGenerateBlocks(t *testing.T) {
+	ui := &SlackUI{
+		agentName:      "KubeAI",
+		contextMessage: "Context",
+	}
+
+	// Case 1: Final message, should include context
+	blocks := ui.generateBlocks("Hello", true)
+	if len(blocks) != 2 { // Section + Context
+		t.Errorf("expected 2 blocks, got %d", len(blocks))
+	}
+	if _, ok := blocks[1].(*slack.ContextBlock); !ok {
+		t.Errorf("expected second block to be ContextBlock, got %T", blocks[1])
+	}
+
+	// Case 2: Non-final message, should NOT include context
+	blocks = ui.generateBlocks("Hello", false)
+	if len(blocks) != 1 { // Section only
+		t.Errorf("expected 1 block, got %d", len(blocks))
+	}
+	if _, ok := blocks[0].(*slack.SectionBlock); !ok {
+		t.Errorf("expected first block to be SectionBlock, got %T", blocks[0])
+	}
+}
+
 func TestProcessMessage(t *testing.T) {
 	sm, _ := sessions.NewSessionManager("memory")
 
@@ -168,9 +266,13 @@ func TestProcessMessage(t *testing.T) {
 	}
 
 	ui := &SlackUI{
-		manager:        am,
-		sessionManager: sm,
-		apiClient:      &mockSlackAPI{},
+		manager:         am,
+		sessionManager:  sm,
+		apiClient:       &mockSlackAPI{},
+		processedEvents: make(map[string]time.Time),
+		activeTriggers:  make(map[string]string),
+		agentName:       "KubeAI",
+		contextMessage:  "Done",
 	}
 
 	channel := "C123"
@@ -196,7 +298,9 @@ func TestProcessMessage(t *testing.T) {
 func TestHandleSlackEventsURLVerification(t *testing.T) {
 	signingSecret := "test-secret"
 	ui := &SlackUI{
-		signingSecret: signingSecret,
+		signingSecret:   signingSecret,
+		processedEvents: make(map[string]time.Time),
+		activeTriggers:  make(map[string]string),
 	}
 
 	body := `{"type": "url_verification", "challenge": "hello-world"}`

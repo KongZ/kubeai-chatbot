@@ -154,6 +154,7 @@ func (c *Agent) addMessage(source api.MessageSource, messageType api.MessageType
 		Type:      messageType,
 		Payload:   payload,
 		Timestamp: time.Now(),
+		Metadata:  make(map[string]string),
 	}
 
 	// session should always have a ChatMessageStore at this point
@@ -237,8 +238,9 @@ func (s *Agent) Init(ctx context.Context) error {
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
-		Tools:             s.Tools,
-		EnableToolUseShim: s.EnableToolUseShim,
+		Tools:                    s.Tools,
+		EnableToolUseShim:        s.EnableToolUseShim,
+		AutomaticModifyResources: s.AutomaticModifyResources,
 		// RunOnce is a good proxy to indicate the agentic session is non-interactive mode.
 		SessionIsInteractive: !s.RunOnce,
 		AgentName:            s.AgentName,
@@ -579,7 +581,11 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				log.Info("streamedText", "streamedText", streamedText)
 
 				if streamedText != "" {
-					c.addMessage(api.MessageSourceModel, api.MessageTypeText, streamedText)
+					msg := c.addMessage(api.MessageSourceModel, api.MessageTypeText, streamedText)
+					// If no function calls to be made, this is the final message of the turn
+					if len(functionCalls) == 0 {
+						msg.Metadata["is_final"] = "true"
+					}
 				}
 				// If no function calls to be made, we're done
 				if len(functionCalls) == 0 {
@@ -594,7 +600,8 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 						// we should let the user know for better diagnostics.
 						// IMPORTANT: This also prevents UIs from getting blocked on reading from the output channel.
 						log.Info("Empty response with no tool calls from LLM.")
-						c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Empty response from LLM")
+						msg := c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Empty response from LLM")
+						msg.Metadata["is_final"] = "true"
 					}
 					continue
 				}
@@ -649,21 +656,42 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					continue // Skip execution for interactive commands
 				}
 
-				if !c.SkipPermissions && modifiesResourceToolCallIndex >= 0 {
+				if !c.SkipPermissions && !c.AutomaticModifyResources && modifiesResourceToolCallIndex >= 0 {
 					// In RunOnce mode, exit with error if permission is required
-					if c.RunOnce {
+					if c.RunOnce || !c.AutomaticModifyResources {
 						var commandDescriptions []string
 						for _, call := range c.pendingFunctionCalls {
 							commandDescriptions = append(commandDescriptions, call.ParsedToolCall.Description())
 						}
-						errorMessage := "RunOnce mode cannot handle permission requests. The following commands require approval:\n* " + strings.Join(commandDescriptions, "\n* ")
-						errorMessage += "\nUse --skip-permissions flag to bypass permission checks in RunOnce mode."
 
-						log.Error(nil, "RunOnce mode cannot handle permission requests", "commands", commandDescriptions)
-						c.setAgentState(api.AgentStateExited)
+						var errorMessage string
+						if !c.AutomaticModifyResources {
+							errorMessage = "Automatic resource modification is DISABLED. Please provide the exact `kubectl` command in your response for the user to execute manually instead of using this tool."
+						} else {
+							errorMessage = "RunOnce mode cannot handle permission requests. The following commands require approval:\n* " + strings.Join(commandDescriptions, "\n* ")
+							errorMessage += "\nUse --skip-permissions flag to bypass permission checks in RunOnce mode."
+						}
+
+						log.Error(nil, "Tool call blocked", "reason", errorMessage, "commands", commandDescriptions)
+
+						// Add the error message to the chat history so the model knows it was blocked
+						if c.EnableToolUseShim {
+							c.currChatContent = append(c.currChatContent, "Error: "+errorMessage)
+						} else {
+							for _, call := range c.pendingFunctionCalls {
+								c.currChatContent = append(c.currChatContent, gollm.FunctionCallResult{
+									ID:     call.FunctionCall.ID,
+									Name:   call.FunctionCall.Name,
+									Result: map[string]any{"error": errorMessage},
+								})
+							}
+						}
+
+						c.setAgentState(api.AgentStateRunning)
 						c.addMessage(api.MessageSourceAgent, api.MessageTypeError, errorMessage)
-						c.lastErr = fmt.Errorf("%s", errorMessage)
-						return
+						c.pendingFunctionCalls = []ToolCallAnalysis{}
+						c.currIteration = c.currIteration + 1
+						continue
 					}
 
 					var commandDescriptions []string
@@ -824,10 +852,11 @@ func (c *Agent) NewSession() (string, error) {
 
 	// Create a new chat session with the new model
 	systemPrompt, err := c.generatePrompt(context.Background(), defaultSystemPromptTemplate, PromptData{
-		Tools:                c.Tools,
-		EnableToolUseShim:    c.EnableToolUseShim,
-		SessionIsInteractive: !c.RunOnce,
-		AgentName:            c.AgentName,
+		Tools:                    c.Tools,
+		EnableToolUseShim:        c.EnableToolUseShim,
+		AutomaticModifyResources: c.AutomaticModifyResources,
+		SessionIsInteractive:     !c.RunOnce,
+		AgentName:                c.AgentName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("generating system prompt for new session: %w", err)
@@ -1132,9 +1161,10 @@ type PromptData struct {
 	Query string
 	Tools tools.Tools
 
-	EnableToolUseShim    bool
-	SessionIsInteractive bool
-	AgentName            string
+	EnableToolUseShim        bool
+	AutomaticModifyResources bool
+	SessionIsInteractive     bool
+	AgentName                string
 }
 
 func (a *PromptData) ToolsAsJSON() string {

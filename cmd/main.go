@@ -1,3 +1,17 @@
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -55,7 +69,7 @@ func run(ctx context.Context) error {
 
 	// Configuration from environment
 	providerID := getEnv("LLM_PROVIDER", "gemini")
-	modelID := getEnv("MODEL_ID", "gemini-2.0-flash-exp")
+	modelID := getEnv("MODEL_ID", "gemini-3-flash-preview")
 	listenAddress := getEnv("LISTEN_ADDRESS", "0.0.0.0:8888")
 	kubeconfig := getEnv("KUBECONFIG", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
 	agentName := getEnv("AGENT_NAME", "kubeai")
@@ -103,7 +117,8 @@ func run(ctx context.Context) error {
 	var userInterface ui.UI
 	switch ui.Type(uiType) {
 	case ui.UITypeSlack:
-		userInterface, err = slack.NewSlackUI(agentManager, sessionManager, modelID, providerID, listenAddress)
+		contextMessage := getEnv("SLACK_CONTEXT_MESSAGE", "I am an AI assistant here to help.")
+		userInterface, err = slack.NewSlackUI(agentManager, sessionManager, modelID, providerID, listenAddress, agentName, contextMessage)
 		if err != nil {
 			return fmt.Errorf("creating slack UI: %w", err)
 		}

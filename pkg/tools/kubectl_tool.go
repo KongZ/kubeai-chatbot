@@ -151,6 +151,10 @@ func (t *Kubectl) CheckModifiesResource(args map[string]any) string {
 }
 
 func validateKubectlCommand(command string) error {
+	lowerCmd := strings.ToLower(command)
+	if strings.Contains(lowerCmd, "secret") || strings.Contains(lowerCmd, "secrets") {
+		return fmt.Errorf("retrieving or accessing Kubernetes secrets is strictly prohibited")
+	}
 	if strings.Contains(command, "kubectl edit") {
 		return fmt.Errorf("interactive mode not supported for kubectl, please use non-interactive commands")
 	}

@@ -572,3 +572,37 @@ func TestKubectlAlwaysAtPosition0(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateKubectlCommand(t *testing.T) {
+	tests := []struct {
+		name      string
+		command   string
+		shouldErr bool
+		errMsg    string
+	}{
+		{"safe command", "kubectl get pods", false, ""},
+		{"secret access", "kubectl get secrets", true, "strictly prohibited"},
+		{"secret singular", "kubectl get secret my-secret", true, "strictly prohibited"},
+		{"secret case insensitive", "kubectl GET SECRET", true, "strictly prohibited"},
+		{"secret in mid command", "kubectl describe secret/my-secret", true, "strictly prohibited"},
+		{"port-forward", "kubectl port-forward pods/abc 8080", true, "port-forwarding is not allowed"},
+		{"edit command", "kubectl edit deploy nginx", true, "interactive mode not supported"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateKubectlCommand(tt.command)
+			if tt.shouldErr {
+				if err == nil {
+					t.Errorf("expected error for %q, got nil", tt.command)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for %q: %v", tt.command, err)
+				}
+			}
+		})
+	}
+}

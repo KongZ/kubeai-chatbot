@@ -63,6 +63,7 @@ type Message struct {
 	Type      MessageType
 	Payload   any
 	Timestamp time.Time
+	Metadata  map[string]string
 }
 
 type MessageSource string

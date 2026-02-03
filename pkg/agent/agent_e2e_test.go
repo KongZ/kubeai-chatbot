@@ -16,6 +16,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,11 +146,12 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 	toolset.RegisterTool(tool)
 
 	a := &Agent{
-		ChatMessageStore: store,
-		LLM:              client,
-		Model:            "test-model",
-		Tools:            toolset,
-		MaxIterations:    4,
+		ChatMessageStore:         store,
+		LLM:                      client,
+		Model:                    "test-model",
+		Tools:                    toolset,
+		MaxIterations:            4,
+		AutomaticModifyResources: true,
 		Session: &api.Session{
 			ID:               "test-session",
 			ChatMessageStore: store,
@@ -177,19 +179,14 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 	// Send a query (UI -> Agent)
 	a.Input <- &api.UserInputResponse{Query: "test"}
 
-	// Wait for choice request indicating state waiting for input.
-	choiceMsg := recvUntil(t, ctx, a.Output, func(m *api.Message) bool {
-		return m.Type == api.MessageTypeUserChoiceRequest
-	})
-	if choiceMsg == nil {
-		t.Fatalf("did not receive choice request")
-	}
-	if st := a.AgentState(); st != api.AgentStateWaitingForInput {
-		t.Fatalf("expected waiting-for-input state, got %s", st)
-	}
+	// In the old behavior, this was MessageTypeUserChoiceRequest.
+	// Since we set AutomaticModifyResources=true, it should skip the choice and go straight to tool call.
+	// However, if we want to test the SKIP logic, we should probably set SkipPermissions=true.
+	// Wait, my change at line 652 in conversation.go was:
+	// if !c.SkipPermissions && !c.AutomaticModifyResources && modifiesResourceToolCallIndex >= 0 {
+	// So if AutomaticModifyResources=true, it skips the choice request block.
 
-	// Approve tool execution (UI -> Agent)
-	a.Input <- &api.UserChoiceResponse{Choice: 1}
+	// So let's skip the choiceMsg recv and expect tool calls.
 
 	// Expect tool invocation messages and final response.
 	sawToolReq, sawToolResp, sawFinal := false, false, false
@@ -309,5 +306,99 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 	}
 	if msgs[1].Type != api.MessageTypeUserInputRequest {
 		t.Fatalf("second message type = %v, want user input request", msgs[1].Type)
+	}
+}
+
+func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := sessions.NewInMemoryChatStore()
+	client := mocks.NewMockClient(ctrl)
+	chat := mocks.NewMockChat(ctrl)
+
+	client.EXPECT().StartChat(gomock.Any(), "test-model").Return(chat)
+	chat.EXPECT().Initialize(gomock.Any()).Return(nil)
+	chat.EXPECT().SetFunctionDefinitions(gomock.Any()).Return(nil)
+
+	// Mocking the tool call and text response from the model
+	firstResp := chatWith(fCalls("mocktool", map[string]any{"command": "create ns"}))
+	secondResp := chatWith(fText("Sorry, automatic modification is disabled. Run: kubectl create ns"))
+
+	firstIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) {
+		yield(firstResp, nil)
+	})
+	secondIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) {
+		yield(secondResp, nil)
+	})
+
+	gomock.InOrder(
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(firstIter, nil),
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(secondIter, nil),
+	)
+
+	tool := mocks.NewMockTool(ctrl)
+	tool.EXPECT().Name().Return("mocktool").AnyTimes()
+	tool.EXPECT().Description().Return("mock tool").AnyTimes()
+	tool.EXPECT().FunctionDefinition().Return(&gollm.FunctionDefinition{Name: "mocktool"}).AnyTimes()
+	tool.EXPECT().IsInteractive(gomock.Any()).Return(false, nil).AnyTimes()
+	// Mock as modifying resource
+	tool.EXPECT().CheckModifiesResource(gomock.Any()).Return("yes").AnyTimes()
+
+	var toolset tools.Tools
+	toolset.Init()
+	toolset.RegisterTool(tool)
+
+	a := &Agent{
+		ChatMessageStore:         store,
+		LLM:                      client,
+		Model:                    "test-model",
+		Tools:                    toolset,
+		MaxIterations:            4,
+		AutomaticModifyResources: false, // EXPLICITLY DISABLED
+		Session: &api.Session{
+			ID:               "test-session",
+			ChatMessageStore: store,
+			AgentState:       api.AgentStateIdle,
+		},
+	}
+
+	if err := a.Init(ctx); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := a.Run(ctx, ""); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	// Skip greeting
+	_ = recvMsg(t, ctx, a.Output)
+	_ = recvMsg(t, ctx, a.Output)
+
+	// Send a query
+	a.Input <- &api.UserInputResponse{Query: "create namespace"}
+
+	// Expect Error message because tool is blocked
+	msg := recvUntil(t, ctx, a.Output, func(m *api.Message) bool {
+		return m.Type == api.MessageTypeError
+	})
+	if msg == nil {
+		t.Fatalf("did not receive error message when tool was blocked")
+	}
+	if !strings.Contains(msg.Payload.(string), "Automatic resource modification is DISABLED") {
+		t.Fatalf("unexpected error message: %v", msg.Payload)
+	}
+
+	// Expect final model response explaining what to do
+	finalMsg := recvUntil(t, ctx, a.Output, func(m *api.Message) bool {
+		return m.Type == api.MessageTypeText && m.Source == api.MessageSourceModel
+	})
+	if finalMsg == nil {
+		t.Fatalf("did not receive final model response")
+	}
+	if !strings.Contains(finalMsg.Payload.(string), "kubectl create ns") {
+		t.Fatalf("model did not provide the manual command: %v", finalMsg.Payload)
 	}
 }

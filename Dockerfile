@@ -2,18 +2,33 @@ ARG GO_VERSION="1.24.3"
 ARG GCLOUD_CLI_VERSION="530.0.0-stable"
 ARG KUBECTL_VERSION="1.33.0"
 
-FROM golang:${GO_VERSION}-trixie AS builder
-
+# Build executable binary
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS builder
 WORKDIR /src
+
+# Declare ARGs inside the stage to make them available
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION
+ARG COMMIT_HASH
+ARG BUILD_DATE
+
+# Construction of LDFLAGS - corrected variable names (commit, date)
+ENV LDFLAGS="-w -s -X main.version=${VERSION} -X main.commit=${COMMIT_HASH} -X main.date=${BUILD_DATE}"
+
 COPY go.mod go.sum ./
 COPY gollm/ ./gollm/
 RUN go mod download
 
-COPY cmd/ ./cmd/
-COPY pkg/ ./pkg/
+COPY . .
 
-RUN CGO_ENABLED=0 go build -o kubeai-chatbot ./cmd/
-FROM debian:trixie-slim AS kubectl-tool
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -v -o kubeai-chatbot -ldflags="$LDFLAGS" ./cmd
+
+# Install kubectl
+FROM debian:bookworm-slim AS kubectl-tool
+ARG KUBECTL_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates && \

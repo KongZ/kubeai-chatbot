@@ -50,22 +50,6 @@ build: ## Build all binaries
 	@gosec -exclude G104,G204,G301,G302,G304,G306,G402,G404 ./...
 	@echo "\033[0m"
 
-.PHONY: build-cli
-build-cli: ## Build all cli binaries
-	@echo "\033[0;31m\n🚜 Building kubeai-chatbot-cli (linux/amd64)..."
-	@mkdir -p bin/linux/amd64
-	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/linux/amd64/kubeai-chatbot cmd/main.go
-	@echo "\033[0;31m\n🚜 Building kubeai-chatbot-cli (windows/386)..."
-	@mkdir -p bin/win/386
-	@GOOS=windows GOARCH=386 CGO_ENABLED=0 go build -o bin/win/386/kubeai-chatbot.exe cmd/main.go
-	@echo "\033[0;31m\n🚜 Building kubeai-chatbot-cli (darwin/amd64)..."
-	@mkdir -p bin/darwin/amd64
-	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o bin/darwin/amd64/kubeai-chatbot cmd/main.go
-	@echo "\033[0;31m\n🚜 Building kubeai-chatbot-cli (darwin/arm64)..."
-	@mkdir -p bin/darwin/arm64
-	@GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o bin/darwin/arm64/kubeai-chatbot cmd/main.go
-	@echo "\033[0m"
-
 .PHONY: build-debug
 build-debug: GOFLAGS += -gcflags "all=-N -l"
 build-debug: build ## Build a binary with remote debugging capabilities
@@ -73,7 +57,7 @@ build-debug: build ## Build a binary with remote debugging capabilities
 .PHONY: docker
 docker: ## Build a kubeai-chatbot Docker image
 	@echo "Building architecture ${BUILD_ARCH}"
-	docker build -t ${CANARY_GATE_DOCKER_IMAGE}:${DOCKER_TAG} \
+	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
 		--platform $(BUILD_ARCH) \
 		--build-arg=VERSION=$(VERSION) \
 		--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
@@ -84,7 +68,7 @@ docker: ## Build a kubeai-chatbot Docker image
 docker-multi: BUILD_ARCH := $(strip $(BUILD_ARCH)),linux/arm64
 docker-multi: ## Build a kubeai-chatbot Docker image in multi-architect
 	@echo "Building architecture ${BUILD_ARCH}"
-	nerdctl build -t ${CANARY_GATE_DOCKER_IMAGE}:${DOCKER_TAG} \
+	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
 		--platform=$(BUILD_ARCH) \
 		--build-arg=VERSION=$(VERSION) \
 		--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
@@ -96,13 +80,13 @@ docker-multi-push: BUILD_ARCH := $(strip $(BUILD_ARCH)),linux/arm64
 docker-multi-push: ## Build a kubeai-chatbot Docker image in multi-architect and push to registry
 	@nerdctl login ghcr.io -u $(GH_NAME) -p $(CR_PAT)
 	@echo "Building architecture ${BUILD_ARCH}"
-	nerdctl build -t ${CANARY_GATE_DOCKER_IMAGE}:${DOCKER_TAG} \
+	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
 		--platform=$(BUILD_ARCH) \
 		--build-arg=VERSION=$(VERSION) \
 		--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
 		--build-arg=BUILD_DATE=$(BUILD_DATE) \
 		-f Dockerfile .
-	nerdctl push --all-platforms ${CANARY_GATE_DOCKER_IMAGE}:${DOCKER_TAG}
+	nerdctl push --all-platforms ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG}
 
 release-%: ## Release a new version
 	git tag -m 'Release $*' $*
