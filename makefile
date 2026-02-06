@@ -64,22 +64,11 @@ docker: ## Build a kubeai-chatbot Docker image
 		--build-arg=BUILD_DATE=$(BUILD_DATE) \
 		-f Dockerfile .
 
-.PHONY: docker-multi
-docker-multi: BUILD_ARCH := $(strip $(BUILD_ARCH)),linux/arm64
-docker-multi: ## Build a kubeai-chatbot Docker image in multi-architect
-	@echo "Building architecture ${BUILD_ARCH}"
-	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
-		--platform=$(BUILD_ARCH) \
-		--build-arg=VERSION=$(VERSION) \
-		--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
-		--build-arg=BUILD_DATE=$(BUILD_DATE) \
-		-f Dockerfile .
-
 .PHONY: docker-multi-push
 docker-multi-push: BUILD_ARCH := $(strip $(BUILD_ARCH)),linux/arm64
 docker-multi-push: ## Build a kubeai-chatbot Docker image in multi-architect and push to registry
 	@nerdctl login ghcr.io -u $(GH_NAME) -p $(CR_PAT)
-	@echo "Building architecture ${BUILD_ARCH}"
+	@echo "Building architecture GKE ${BUILD_ARCH}"
 	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
 		--platform=$(BUILD_ARCH) \
 		--build-arg=VERSION=$(VERSION) \

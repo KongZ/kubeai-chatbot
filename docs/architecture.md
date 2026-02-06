@@ -95,9 +95,9 @@ sequenceDiagram
     Ag->>K: Execute 'kubectl get pods'
     K-->>Ag: Pod list data
     Ag->>L: Execution Result
-    L-->>Ag: Here are your pods: [Table]
+    L-->>Ag: Here are your pods
     Ag->>UI: Final Response
-    UI->>S: Post Message (Native Blocks)
+    UI->>S: Post Message
     S->>U: Display Response
     end
 ```

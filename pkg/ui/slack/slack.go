@@ -428,6 +428,10 @@ func (s *SlackUI) generateBlocks(text string, includeContext bool) []slack.Block
 
 func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	var blocks []slack.Block
+
+	// First, normalize tables that might be on a single line
+	text = s.normalizeInlineTables(text)
+
 	lines := strings.Split(text, "\n")
 
 	var currentParagraph []string
@@ -450,11 +454,10 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	flushTable := func() {
 		if len(tableLines) > 0 {
 			headers, rows := s.parseMarkdownTable(tableLines)
-			if (len(headers) > 0 || len(rows) > 0) && len(headers) <= 10 && len(rows) <= 10 {
+			if len(headers) > 0 && len(headers) <= 10 && len(rows) <= 10 {
 				blocks = append(blocks, NewTableBlock(headers, rows))
 			} else if len(headers) > 0 {
 				// Fallback to code block if table is too big for native TableBlock
-				// or if it's missing the separator (though parseMarkdownTable checks that)
 				tableText := strings.Join(tableLines, "\n")
 				blocks = append(blocks, slack.NewSectionBlock(
 					slack.NewTextBlockObject(slack.MarkdownType, "```\n"+tableText+"\n```", false, false),
@@ -485,7 +488,8 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 			continue
 		}
 
-		isTableRow := strings.HasPrefix(trimmed, "|") || (strings.Contains(trimmed, "|") && len(strings.Split(trimmed, "|")) > 2)
+		// More robust table row detection
+		isTableRow := s.isTableRow(trimmed)
 
 		if isTableRow {
 			if !inTable {
@@ -495,11 +499,10 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 			tableLines = append(tableLines, line)
 		} else {
 			if inTable {
-				// Check if we were just in a table
-				// If strictly transitioning out, check if it was really a table (had separator)
+				// Check if we have a valid table with separator
 				hasSeparator := false
 				for _, tl := range tableLines {
-					if strings.Contains(tl, "---") {
+					if s.isTableSeparator(tl) {
 						hasSeparator = true
 						break
 					}
@@ -521,7 +524,7 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	if inTable {
 		hasSeparator := false
 		for _, tl := range tableLines {
-			if strings.Contains(tl, "---") {
+			if s.isTableSeparator(tl) {
 				hasSeparator = true
 				break
 			}
@@ -544,7 +547,7 @@ func (s *SlackUI) parseMarkdownTable(lines []string) ([]string, [][]string) {
 	seenSeparator := false
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, "---") && (strings.HasPrefix(trimmed, "|") || strings.Contains(trimmed, "-|-")) {
+		if s.isTableSeparator(trimmed) {
 			seenSeparator = true
 			continue
 		}
@@ -581,6 +584,112 @@ func (s *SlackUI) parseMarkdownTable(lines []string) ([]string, [][]string) {
 	}
 
 	return headers, rows
+}
+
+// normalizeInlineTables converts inline tables (tables without line breaks) to multi-line format
+func (s *SlackUI) normalizeInlineTables(text string) string {
+	// Pattern: | col1 | col2 || :--- | :--- || row1 | row2 |
+	// This happens when LLM outputs tables without proper line breaks
+
+	// Split by lines first
+	lines := strings.Split(text, "\n")
+	var result []string
+
+	for _, line := range lines {
+		// Check if line contains multiple table rows (multiple || patterns)
+		if strings.Count(line, "||") >= 2 {
+			// Check if line starts with a header (###, ##, #)
+			headerPrefix := ""
+			contentStart := 0
+			trimmed := strings.TrimSpace(line)
+
+			if strings.HasPrefix(trimmed, "###") {
+				headerPrefix = "### "
+				contentStart = strings.Index(line, "###") + 3
+			} else if strings.HasPrefix(trimmed, "##") {
+				headerPrefix = "## "
+				contentStart = strings.Index(line, "##") + 2
+			} else if strings.HasPrefix(trimmed, "#") {
+				headerPrefix = "# "
+				contentStart = strings.Index(line, "#") + 1
+			}
+
+			// Extract header text if present
+			if headerPrefix != "" {
+				headerEnd := strings.Index(line[contentStart:], "|")
+				if headerEnd > 0 {
+					headerText := strings.TrimSpace(line[contentStart : contentStart+headerEnd])
+					result = append(result, headerPrefix+headerText)
+					line = line[contentStart+headerEnd:]
+				}
+			}
+
+			// Split by || to separate rows
+			parts := strings.Split(line, "||")
+			for _, part := range parts {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				// Ensure each part starts and ends with |
+				if !strings.HasPrefix(part, "|") {
+					part = "| " + part
+				}
+				if !strings.HasSuffix(part, "|") {
+					part = part + " |"
+				}
+				result = append(result, part)
+			}
+		} else {
+			result = append(result, line)
+		}
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// isTableRow checks if a line is a table row
+func (s *SlackUI) isTableRow(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+
+	// Must contain at least one pipe
+	if !strings.Contains(trimmed, "|") {
+		return false
+	}
+
+	// Count pipes - should have at least 2 for a valid table row
+	pipeCount := strings.Count(trimmed, "|")
+	if pipeCount < 2 {
+		return false
+	}
+
+	// Check if it's a separator row
+	if s.isTableSeparator(trimmed) {
+		return true
+	}
+
+	// Should start with | or have content before first |
+	return true
+}
+
+// isTableSeparator checks if a line is a table separator (e.g., | :--- | :--- |)
+func (s *SlackUI) isTableSeparator(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	// Separator contains dashes and pipes, and colons for alignment
+	if !strings.Contains(trimmed, "-") {
+		return false
+	}
+
+	// Remove pipes, spaces, colons, and dashes - should be empty or nearly empty
+	cleaned := strings.ReplaceAll(trimmed, "|", "")
+	cleaned = strings.ReplaceAll(cleaned, "-", "")
+	cleaned = strings.ReplaceAll(cleaned, ":", "")
+	cleaned = strings.ReplaceAll(cleaned, " ", "")
+
+	return len(cleaned) == 0
 }
 
 func (s *SlackUI) uploadSnippet(channel, threadTS, text string) {

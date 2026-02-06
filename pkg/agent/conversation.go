@@ -22,6 +22,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -223,14 +224,20 @@ func (s *Agent) Init(ctx context.Context) error {
 		return fmt.Errorf("agent requires a session to be provided")
 	}
 
-	// Create a temporary working directory
-	workDir, err := os.MkdirTemp("", "agent-workdir-*")
+	// Create a session working directory in the user's home directory
+	// to avoid read-only filesystem issues in containers
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Error(err, "Failed to create temporary working directory")
+		log.Error(err, "Failed to get user home directory")
+		return err
+	}
+	workDir := filepath.Join(homeDir, ".kubeai", "agent")
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		log.Error(err, "Failed to create session working directory")
 		return err
 	}
 
-	log.Info("Created temporary working directory", "workDir", workDir)
+	log.Info("Created agent working directory", "workDir", workDir)
 
 	s.workDir = workDir
 

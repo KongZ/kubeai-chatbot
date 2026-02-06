@@ -27,6 +27,7 @@ import (
 
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/google/uuid"
+	"k8s.io/klog/v2"
 )
 
 type ContextKey string
@@ -87,7 +88,8 @@ func (t *Tools) RegisterTool(tool Tool) {
 	name := tool.Name()
 
 	if _, exists := t.tools[name]; exists {
-		panic("tool already registered: " + name)
+		klog.V(2).Infof("tool already registered: %s, skipping", name)
+		return
 	}
 	t.tools[name] = tool
 }

@@ -21,19 +21,7 @@ A powerful Slack chatbot for Kubernetes cluster management, powered by AI. It al
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
-- **Go 1.24** or later.
-- **Kubernetes Cluster** with valid `kubeconfig`.
-- **Slack App** configured with `app_mention` and `message.channels` event subscriptions.
-
-### 2. Slack App Configuration
-The easiest way to set up your Slack app is using the provided manifest:
-1. Go to [api.slack.com/apps](https://api.slack.com/apps).
-2. Create a new app **From a manifest**.
-3. Copy the contents of [`docs/slack_app_manifest.yaml`](docs/slack_app_manifest.yaml) and paste it into the editor.
-4. Update the `request_url` to your hosted environment's `/slack/events` endpoint.
-
-### 3. Installation
+### 1. Installation
 
 #### Using Helm (Recommended)
 ```bash
@@ -43,30 +31,82 @@ helm install kubeai-chatbot ./charts/kubeai-chartbot \
   --set env.GEMINI_API_KEY="..."
 ```
 
-#### Running Locally
-```bash
-# Set credentials
-export SLACK_BOT_TOKEN="xoxb-..."
-export SLACK_SIGNING_SECRET="..."
-export GEMINI_API_KEY="..."
-
-# Build and Run
-go build -o kubeai-chatbot ./cmd
-./kubeai-chatbot
-```
+### 2. Slack App Configuration
+The easiest way to set up your Slack app is using the provided manifest:
+1. Go to [api.slack.com/apps](https://api.slack.com/apps).
+2. Create a new app **From a manifest**.
+3. Copy the contents of [`docs/slack_app_manifest.yaml`](docs/slack_app_manifest.yaml) and paste it into the editor.
+4. Update the `request_url` to your hosted environment's `/slack/events` endpoint.
 
 ## ⚙️ Configuration
 
-| Variable                     | Description                                       | Default                  |
-| :--------------------------- | :------------------------------------------------ | :----------------------- |
-| `SLACK_BOT_TOKEN`            | Slack Bot User OAuth Token                        | Required                 |
-| `SLACK_SIGNING_SECRET`       | Slack app Signing Secret                          | Required                 |
-| `GEMINI_API_KEY`             | Google AI API Key                                 | Required                 |
-| `AUTOMATIC_MODIFY_RESOURCES` | Enable/Disable AI's ability to run write commands | `false`                  |
-| `LLM_PROVIDER`               | LLM service provider (`gemini`, `openai`)         | `gemini`                 |
-| `MODEL_ID`                   | Specific LLM model to use                         | `gemini-3-flash-preview` |
-| `KUBECONFIG`                 | Path to your kubeconfig file                      | `$HOME/.kube/config`     |
-| `LISTEN_ADDRESS`             | Address for the bot to listen on                  | `0.0.0.0:8888`           |
+### General Application Settings
+
+| Variable                     | Description                                       | Default              |
+| :--------------------------- | :------------------------------------------------ | :------------------- |
+| `SLACK_BOT_TOKEN`            | Slack Bot User OAuth Token                        | Required             |
+| `SLACK_SIGNING_SECRET`       | Slack app Signing Secret                          | Required             |
+| `AUTOMATIC_MODIFY_RESOURCES` | Enable/Disable AI's ability to run write commands | `false`              |
+| `KUBECONFIG`                 | Path to your kubeconfig file                      | `$HOME/.kube/config` |
+| `LISTEN_ADDRESS`             | Address for the bot to listen on                  | `0.0.0.0:8888`       |
+
+### General LLM Settings
+
+| Variable              | Description                                              | Default                  |
+| :-------------------- | :------------------------------------------------------- | :----------------------- |
+| `LLM_PROVIDER`        | Legacy LLM service provider (`gemini`, `openai`)         | `gemini`                 |
+| `MODEL_ID`            | Specific LLM model to use                                | `gemini-3-flash-preview` |
+| `LLM_SKIP_VERIFY_SSL` | Skip SSL certificate verification (set to `1` or `true`) | `false`                  |
+
+### OpenAI Configuration
+
+| Variable                   | Description                              | Default  |
+| :------------------------- | :--------------------------------------- | :------- |
+| `OPENAI_API_KEY`           | OpenAI API authentication key            | Required |
+| `OPENAI_ENDPOINT`          | Custom OpenAI endpoint URL               | Optional |
+| `OPENAI_API_BASE`          | Base URL for OpenAI API                  | Optional |
+| `OPENAI_MODEL`             | Default model to use for OpenAI          | Optional |
+| `OPENAI_USE_RESPONSES_API` | Use OpenAI responses API (set to `true`) | `false`  |
+
+### Azure OpenAI Configuration
+
+| Variable                | Description                         | Default  |
+| :---------------------- | :---------------------------------- | :------- |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL           | Required |
+| `AZURE_OPENAI_API_KEY`  | Azure OpenAI API authentication key | Required |
+
+### Google Gemini Configuration
+
+| Variable         | Description                          | Default  |
+| :--------------- | :----------------------------------- | :------- |
+| `GEMINI_API_KEY` | Google Gemini API authentication key | Required |
+
+### Vertex AI Configuration
+
+| Variable                | Description                          | Default  |
+| :---------------------- | :----------------------------------- | :------- |
+| `GOOGLE_CLOUD_PROJECT`  | GCP project ID for Vertex AI         | Required |
+| `GOOGLE_CLOUD_LOCATION` | GCP region/location for Vertex AI    | Optional |
+| `GOOGLE_CLOUD_REGION`   | Alternative to GOOGLE_CLOUD_LOCATION | Optional |
+
+### Grok Configuration
+
+| Variable        | Description                     | Default  |
+| :-------------- | :------------------------------ | :------- |
+| `GROK_API_KEY`  | xAI Grok API authentication key | Required |
+| `GROK_ENDPOINT` | Custom Grok endpoint URL        | Optional |
+
+### LlamaCPP Configuration
+
+| Variable        | Description                  | Default                  |
+| :-------------- | :--------------------------- | :----------------------- |
+| `LLAMACPP_HOST` | Host URL for LlamaCPP server | `http://127.0.0.1:8080/` |
+
+### AWS Bedrock Configuration
+
+| Variable        | Description                      | Default         |
+| :-------------- | :------------------------------- | :-------------- |
+| `BEDROCK_MODEL` | Model identifier for AWS Bedrock | Claude Sonnet 4 |
 
 ## 🛡️ Safety & Security
 

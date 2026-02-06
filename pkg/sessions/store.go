@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
+	"k8s.io/klog/v2"
 )
 
 const sessionsDirName = "sessions"
@@ -55,6 +56,7 @@ func NewStore(backend string) (Store, error) {
 		if err := os.MkdirAll(basePath, 0o755); err != nil {
 			return nil, err
 		}
+		klog.Info("Created sessions working directory", "dir", basePath)
 		return newFilesystemStore(basePath), nil
 	default:
 		return nil, fmt.Errorf("unsupported sessions backend: %s", backend)
@@ -66,5 +68,5 @@ func defaultFilesystemBasePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".kubectl-ai", sessionsDirName), nil
+	return filepath.Join(home, ".kubeai", sessionsDirName), nil
 }

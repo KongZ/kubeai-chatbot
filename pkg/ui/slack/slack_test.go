@@ -351,3 +351,177 @@ func TestHealthz(t *testing.T) {
 		t.Errorf("expected body 'ok', got %q", rr.Body.String())
 	}
 }
+
+func TestNormalizeInlineTables(t *testing.T) {
+	s := &SlackUI{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:  "inline table with double pipes",
+			input: "### Summary Table| Perspective | IP Address || :--- | :--- || **Cluster Node (VM)** | `192.168.5.2` || **Gateway (Host Machine)** | `192.168.5.1` || **Outgoing Internet IP** | Your Host's Public IP |",
+			expected: `### Summary Table
+| Perspective | IP Address |
+| :--- | :--- |
+| **Cluster Node (VM)** | ` + "`192.168.5.2`" + ` |
+| **Gateway (Host Machine)** | ` + "`192.168.5.1`" + ` |
+| **Outgoing Internet IP** | Your Host's Public IP |`,
+		},
+		{
+			name: "normal multi-line table",
+			input: `| Header 1 | Header 2 |
+| :--- | :--- |
+| Row 1 | Data 1 |`,
+			expected: `| Header 1 | Header 2 |
+| :--- | :--- |
+| Row 1 | Data 1 |`,
+		},
+		{
+			name:     "no table",
+			input:    "This is just regular text without any tables.",
+			expected: "This is just regular text without any tables.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.normalizeInlineTables(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizeInlineTables() failed\nInput:\n%s\n\nExpected:\n%s\n\nGot:\n%s", tt.input, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestIsTableRow(t *testing.T) {
+	s := &SlackUI{}
+
+	tests := []struct {
+		name     string
+		line     string
+		expected bool
+	}{
+		{
+			name:     "valid table row",
+			line:     "| Column 1 | Column 2 |",
+			expected: true,
+		},
+		{
+			name:     "table separator",
+			line:     "| :--- | :--- |",
+			expected: true,
+		},
+		{
+			name:     "table row without leading pipe",
+			line:     "Column 1 | Column 2 |",
+			expected: true,
+		},
+		{
+			name:     "not a table row - single pipe",
+			line:     "This is | not a table",
+			expected: false,
+		},
+		{
+			name:     "empty line",
+			line:     "",
+			expected: false,
+		},
+		{
+			name:     "no pipes",
+			line:     "Just regular text",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.isTableRow(tt.line)
+			if result != tt.expected {
+				t.Errorf("isTableRow(%q) = %v, expected %v", tt.line, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsTableSeparator(t *testing.T) {
+	s := &SlackUI{}
+
+	tests := []struct {
+		name     string
+		line     string
+		expected bool
+	}{
+		{
+			name:     "standard separator",
+			line:     "| :--- | :--- |",
+			expected: true,
+		},
+		{
+			name:     "separator with dashes only",
+			line:     "| --- | --- |",
+			expected: true,
+		},
+		{
+			name:     "separator with right align",
+			line:     "| ---: | ---: |",
+			expected: true,
+		},
+		{
+			name:     "separator with center align",
+			line:     "| :---: | :---: |",
+			expected: true,
+		},
+		{
+			name:     "not a separator - regular row",
+			line:     "| Data 1 | Data 2 |",
+			expected: false,
+		},
+		{
+			name:     "not a separator - no dashes",
+			line:     "| Column | Column |",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.isTableSeparator(tt.line)
+			if result != tt.expected {
+				t.Errorf("isTableSeparator(%q) = %v, expected %v", tt.line, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMarkdownToBlocks_WithInlineTable(t *testing.T) {
+	s := &SlackUI{}
+
+	// Test the actual problematic input from the log
+	input := "### Summary Table| Perspective | IP Address || :--- | :--- || **Cluster Node (VM)** | `192.168.5.2` || **Gateway (Host Machine)** | `192.168.5.1` || **Outgoing Internet IP** | Your Host's Public IP |"
+
+	blocks := s.markdownToBlocks(input)
+
+	// Should have at least 2 blocks: header + table
+	if len(blocks) < 2 {
+		t.Errorf("Expected at least 2 blocks (header + table), got %d", len(blocks))
+	}
+
+	// First block should be a header
+	if blocks[0].BlockType() != slack.MBTHeader {
+		t.Errorf("First block should be header, got %s", blocks[0].BlockType())
+	}
+
+	// Second block should be a table
+	if _, ok := blocks[1].(*TableBlock); !ok {
+		t.Errorf("Second block should be TableBlock, got %T", blocks[1])
+	} else {
+		tableBlock := blocks[1].(*TableBlock)
+		// Should have header row + 3 data rows = 4 rows total
+		if len(tableBlock.Rows) != 4 {
+			t.Errorf("Expected 4 rows in table (1 header + 3 data), got %d", len(tableBlock.Rows))
+		}
+	}
+}

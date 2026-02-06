@@ -97,13 +97,17 @@ func run(ctx context.Context) error {
 			return nil, fmt.Errorf("creating llm client: %w", err)
 		}
 
+		// Create a new Tools instance for each agent to avoid sharing state
+		agentTools := tools.Tools{}
+		agentTools.Init()
+
 		return &agent.Agent{
 			Model:                    modelID,
 			Provider:                 providerID,
 			Kubeconfig:               kubeconfig,
 			LLM:                      client,
 			MaxIterations:            20,
-			Tools:                    tools.Default(),
+			Tools:                    agentTools,
 			Recorder:                 recorder,
 			SessionBackend:           sessionType,
 			AgentName:                agentName,
