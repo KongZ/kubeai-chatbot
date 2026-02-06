@@ -62,8 +62,15 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Create user with UID 1000 and home directory
+RUN groupadd -g 1000 kubeai && \
+    useradd -u 1000 -g kubeai -m -d /home/kubeai -s /bin/bash kubeai && \
+    mkdir -p /home/kubeai/.kubeai && \
+    chown -R kubeai:kubeai /home/kubeai
+
 COPY --from=builder /src/kubeai-chatbot /bin/kubeai-chatbot
 RUN ln -sf /opt/tools/kubectl/bin/kubectl /bin/kubectl
 
-USER 1000
+USER kubeai
+WORKDIR /home/kubeai
 ENTRYPOINT [ "/bin/kubeai-chatbot" ]

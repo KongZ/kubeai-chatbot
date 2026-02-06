@@ -88,6 +88,8 @@ func (m *mockAgentManager) SetAgentCreatedCallback(cb func(*agent.Agent)) {
 	}
 }
 
+// TestFormatForSlack verifies that markdown formatting is correctly converted to Slack's mrkdwn format.
+// It tests bold, italic, links, code blocks, and combined formatting conversions.
 func TestFormatForSlack(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -141,6 +143,8 @@ func TestFormatForSlack(t *testing.T) {
 	}
 }
 
+// TestMarkdownToBlocks verifies that markdown text is correctly parsed into Slack Block Kit blocks.
+// It tests the conversion of headers, tables, and paragraphs into their respective block types.
 func TestMarkdownToBlocks(t *testing.T) {
 	ui := &SlackUI{
 		agentName:      "KubeAI",
@@ -179,6 +183,8 @@ func TestMarkdownToBlocks(t *testing.T) {
 	}
 }
 
+// TestIsComplexOrLong verifies the logic that determines whether a message should be uploaded
+// as a file snippet instead of posted directly. Tests length limits and code block detection.
 func TestIsComplexOrLong(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -223,6 +229,8 @@ func TestIsComplexOrLong(t *testing.T) {
 	}
 }
 
+// TestGenerateBlocks verifies that blocks are generated correctly with or without context.
+// Final messages should include a context block, while non-final messages should not.
 func TestGenerateBlocks(t *testing.T) {
 	ui := &SlackUI{
 		agentName:      "KubeAI",
@@ -248,6 +256,8 @@ func TestGenerateBlocks(t *testing.T) {
 	}
 }
 
+// TestProcessMessage verifies that incoming Slack messages are correctly processed and forwarded
+// to the agent. It tests mention stripping, session creation, and message routing.
 func TestProcessMessage(t *testing.T) {
 	sm, _ := sessions.NewSessionManager("memory")
 
@@ -295,6 +305,8 @@ func TestProcessMessage(t *testing.T) {
 	}
 }
 
+// TestHandleSlackEventsURLVerification verifies that Slack's URL verification challenge
+// is handled correctly with proper HMAC signature validation.
 func TestHandleSlackEventsURLVerification(t *testing.T) {
 	signingSecret := "test-secret"
 	ui := &SlackUI{
@@ -329,6 +341,8 @@ func TestHandleSlackEventsURLVerification(t *testing.T) {
 	}
 }
 
+// TestHealthz verifies that the health check endpoint returns a 200 OK status
+// with the expected "ok" response body.
 func TestHealthz(t *testing.T) {
 	// We need to initialize the mux to test it, but it's initialized in NewSlackUI.
 	// Since NewSlackUI does a lot of things, let's just test the handler logic if we can,
@@ -352,6 +366,9 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+// TestNormalizeInlineTables verifies that inline tables (tables without line breaks) are correctly
+// normalized into multi-line format. This handles cases where LLMs output tables with || separators
+// on a single line, including tables that start with markdown headers.
 func TestNormalizeInlineTables(t *testing.T) {
 	s := &SlackUI{}
 
@@ -396,6 +413,8 @@ func TestNormalizeInlineTables(t *testing.T) {
 	}
 }
 
+// TestIsTableRow verifies the logic that determines whether a line of text is a table row.
+// It tests various formats including rows with and without leading pipes, separators, and edge cases.
 func TestIsTableRow(t *testing.T) {
 	s := &SlackUI{}
 
@@ -446,6 +465,8 @@ func TestIsTableRow(t *testing.T) {
 	}
 }
 
+// TestIsTableSeparator verifies the detection of markdown table separator rows.
+// It tests various separator formats including left, right, and center alignment indicators.
 func TestIsTableSeparator(t *testing.T) {
 	s := &SlackUI{}
 
@@ -496,7 +517,10 @@ func TestIsTableSeparator(t *testing.T) {
 	}
 }
 
-func TestMarkdownToBlocks_WithInlineTable(t *testing.T) {
+// TestMarkdownToBlocksWithInlineTable is an end-to-end test that verifies the complete pipeline
+// of normalizing inline tables and converting them to Slack blocks. It uses the actual problematic
+// input from production logs where a markdown header and table were on the same line.
+func TestMarkdownToBlocksWithInlineTable(t *testing.T) {
 	s := &SlackUI{}
 
 	// Test the actual problematic input from the log
@@ -523,5 +547,131 @@ func TestMarkdownToBlocks_WithInlineTable(t *testing.T) {
 		if len(tableBlock.Rows) != 4 {
 			t.Errorf("Expected 4 rows in table (1 header + 3 data), got %d", len(tableBlock.Rows))
 		}
+	}
+}
+
+// TestStripEmojis verifies that emoji characters are correctly removed from text.
+// This is necessary because Slack header blocks only support plain text without emojis.
+func TestStripEmojis(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "header with emoji",
+			input:    "🚨 Critical Errors (CrashLoopBackOff)",
+			expected: "Critical Errors (CrashLoopBackOff)",
+		},
+		{
+			name:     "multiple emojis",
+			input:    "⚠️ Warning ℹ️ Info 🛠️ Tools",
+			expected: "Warning ℹ Info  Tools", // ℹ️ has variation selector that gets removed separately
+		},
+		{
+			name:     "no emojis",
+			input:    "Plain text header",
+			expected: "Plain text header",
+		},
+		{
+			name:     "emoji at end",
+			input:    "Additional Context 🔍",
+			expected: "Additional Context",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripEmojis(tt.input)
+			if result != tt.expected {
+				t.Errorf("stripEmojis(%q) = %q, expected %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestMarkdownToBlocksWithEmojis verifies that markdown with emojis in headers
+// is correctly processed, with emojis stripped from header blocks.
+func TestMarkdownToBlocksWithEmojis(t *testing.T) {
+	s := &SlackUI{}
+
+	input := "### 🚨 Critical Errors\n\nSome text here."
+
+	blocks := s.markdownToBlocks(input)
+
+	if len(blocks) < 2 {
+		t.Fatalf("Expected at least 2 blocks, got %d", len(blocks))
+	}
+
+	// First block should be a header without emoji
+	if hb, ok := blocks[0].(*slack.HeaderBlock); !ok {
+		t.Errorf("First block should be HeaderBlock, got %T", blocks[0])
+	} else {
+		if strings.Contains(hb.Text.Text, "🚨") {
+			t.Errorf("Header should not contain emoji, got: %q", hb.Text.Text)
+		}
+		if !strings.Contains(hb.Text.Text, "Critical Errors") {
+			t.Errorf("Header should contain 'Critical Errors', got: %q", hb.Text.Text)
+		}
+	}
+}
+
+// TestNewTableBlockLimits verifies that table blocks respect Slack's limits
+// of maximum 5 columns and 50 rows (including header).
+func TestNewTableBlockLimits(t *testing.T) {
+	tests := []struct {
+		name        string
+		headers     []string
+		rows        [][]string
+		expectValid bool
+	}{
+		{
+			name:        "valid table with 3 columns",
+			headers:     []string{"Col1", "Col2", "Col3"},
+			rows:        [][]string{{"A", "B", "C"}},
+			expectValid: true,
+		},
+		{
+			name:        "valid table with 5 columns (max)",
+			headers:     []string{"C1", "C2", "C3", "C4", "C5"},
+			rows:        [][]string{{"A", "B", "C", "D", "E"}},
+			expectValid: true,
+		},
+		{
+			name:        "invalid table with 6 columns",
+			headers:     []string{"C1", "C2", "C3", "C4", "C5", "C6"},
+			rows:        [][]string{{"A", "B", "C", "D", "E", "F"}},
+			expectValid: false,
+		},
+		{
+			name:        "empty headers",
+			headers:     []string{},
+			rows:        [][]string{{"A", "B"}},
+			expectValid: false,
+		},
+		{
+			name:    "too many rows",
+			headers: []string{"Col1", "Col2"},
+			rows: func() [][]string {
+				rows := make([][]string, 50) // 50 data rows + 1 header = 51 total (exceeds limit)
+				for i := range rows {
+					rows[i] = []string{"A", "B"}
+				}
+				return rows
+			}(),
+			expectValid: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NewTableBlock(tt.headers, tt.rows)
+			if tt.expectValid && result == nil {
+				t.Errorf("Expected valid table block, got nil")
+			}
+			if !tt.expectValid && result != nil {
+				t.Errorf("Expected nil for invalid table, got valid block")
+			}
+		})
 	}
 }

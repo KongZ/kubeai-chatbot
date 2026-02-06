@@ -408,6 +408,11 @@ func (s *SlackUI) postToSlack(channel, threadTS, text string, includeContext boo
 	)
 	if err != nil {
 		klog.Errorf("Failed to post message to Slack: %v", err)
+		// If blocks are invalid, try uploading as snippet instead
+		if strings.Contains(err.Error(), "invalid_blocks") {
+			klog.Warningf("Blocks validation failed, uploading as snippet instead")
+			s.uploadSnippet(channel, threadTS, text)
+		}
 	}
 }
 
@@ -454,15 +459,19 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	flushTable := func() {
 		if len(tableLines) > 0 {
 			headers, rows := s.parseMarkdownTable(tableLines)
-			if len(headers) > 0 && len(headers) <= 10 && len(rows) <= 10 {
-				blocks = append(blocks, NewTableBlock(headers, rows))
-			} else if len(headers) > 0 {
-				// Fallback to code block if table is too big for native TableBlock
-				tableText := strings.Join(tableLines, "\n")
-				blocks = append(blocks, slack.NewSectionBlock(
-					slack.NewTextBlockObject(slack.MarkdownType, "```\n"+tableText+"\n```", false, false),
-					nil, nil,
-				))
+			if len(headers) > 0 {
+				tableBlock := NewTableBlock(headers, rows)
+				if tableBlock != nil && len(headers) <= 5 && len(rows) <= 49 {
+					// Valid table within Slack limits
+					blocks = append(blocks, tableBlock)
+				} else {
+					// Table exceeds limits or is invalid, use code block fallback
+					tableText := strings.Join(tableLines, "\n")
+					blocks = append(blocks, slack.NewSectionBlock(
+						slack.NewTextBlockObject(slack.MarkdownType, "```\n"+tableText+"\n```", false, false),
+						nil, nil,
+					))
+				}
 			} else {
 				// Not a valid table, treat as paragraph
 				currentParagraph = append(currentParagraph, tableLines...)
@@ -481,6 +490,8 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 			flushParagraph()
 			flushTable()
 			headerText := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			// Strip emojis from header text as Slack headers only support plain text
+			headerText = stripEmojis(headerText)
 			blocks = append(blocks, slack.NewHeaderBlock(
 				slack.NewTextBlockObject(slack.PlainTextType, headerText, false, false),
 			))
@@ -690,6 +701,51 @@ func (s *SlackUI) isTableSeparator(line string) bool {
 	cleaned = strings.ReplaceAll(cleaned, " ", "")
 
 	return len(cleaned) == 0
+}
+
+// stripEmojis removes emoji characters from text.
+// Slack header blocks only support plain text without emojis.
+func stripEmojis(text string) string {
+	// Remove common emoji patterns
+	result := []rune{}
+	runes := []rune(text)
+
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		// Skip variation selectors (U+FE00 to U+FE0F)
+		if r >= 0xFE00 && r <= 0xFE0F {
+			continue
+		}
+
+		// Skip emoji ranges
+		// Emoticons: U+1F600 to U+1F64F
+		// Misc Symbols: U+1F300 to U+1F5FF
+		// Transport: U+1F680 to U+1F6FF
+		// Misc Symbols Extended: U+1F900 to U+1F9FF
+		// Supplemental Symbols: U+1FA00 to U+1FA6F
+		// Misc symbols: U+2600 to U+26FF
+		// Dingbats: U+2700 to U+27BF
+		if (r >= 0x1F600 && r <= 0x1F64F) ||
+			(r >= 0x1F300 && r <= 0x1F5FF) ||
+			(r >= 0x1F680 && r <= 0x1F6FF) ||
+			(r >= 0x1F900 && r <= 0x1F9FF) ||
+			(r >= 0x1FA00 && r <= 0x1FA6F) ||
+			(r >= 0x2600 && r <= 0x26FF) ||
+			(r >= 0x2700 && r <= 0x27BF) ||
+			(r >= 0x2300 && r <= 0x23FF) || // Misc Technical
+			(r >= 0x2B00 && r <= 0x2BFF) { // Misc Symbols and Arrows
+			// Check if next rune is a variation selector and skip it too
+			if i+1 < len(runes) && runes[i+1] >= 0xFE00 && runes[i+1] <= 0xFE0F {
+				i++
+			}
+			continue
+		}
+
+		result = append(result, r)
+	}
+
+	return strings.TrimSpace(string(result))
 }
 
 func (s *SlackUI) uploadSnippet(channel, threadTS, text string) {

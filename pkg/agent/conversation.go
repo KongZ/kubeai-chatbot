@@ -231,7 +231,7 @@ func (s *Agent) Init(ctx context.Context) error {
 		log.Error(err, "Failed to get user home directory")
 		return err
 	}
-	workDir := filepath.Join(homeDir, ".kubeai", "agent")
+	workDir := filepath.Join(homeDir, sessions.KubeAIDirName, "agent")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		log.Error(err, "Failed to create session working directory")
 		return err

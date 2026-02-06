@@ -26,6 +26,7 @@ import (
 )
 
 const sessionsDirName = "sessions"
+const KubeAIDirName = ".kubeai"
 
 type Metadata struct {
 	ProviderID   string    `json:"providerID"`
@@ -68,5 +69,5 @@ func defaultFilesystemBasePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".kubeai", sessionsDirName), nil
+	return filepath.Join(home, KubeAIDirName, sessionsDirName), nil
 }

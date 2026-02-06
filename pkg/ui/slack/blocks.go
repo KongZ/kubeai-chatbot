@@ -35,8 +35,19 @@ type TableCell struct {
 	Text string `json:"text"`
 }
 
-// NewTableBlock creates a new TableBlock following the correct Slack schema
+// NewTableBlock creates a new TableBlock following the correct Slack schema.
+// Returns nil if the table exceeds Slack's limits or is invalid.
 func NewTableBlock(headers []string, rows [][]string) *TableBlock {
+	// Slack table limits (as of 2024):
+	// - Maximum 5 columns
+	// - Maximum 50 rows (including header)
+	if len(headers) == 0 || len(headers) > 5 {
+		return nil
+	}
+	if len(rows) > 49 { // 49 data rows + 1 header = 50 total
+		return nil
+	}
+
 	tb := &TableBlock{
 		TypeVal: "table",
 	}
@@ -62,6 +73,10 @@ func NewTableBlock(headers []string, rows [][]string) *TableBlock {
 			// Slack Table cells cannot be empty
 			if cellData == "" {
 				cellData = "\u00A0" // Non-breaking space
+			}
+			// Truncate very long cell content
+			if len(cellData) > 500 {
+				cellData = cellData[:497] + "..."
 			}
 			row = append(row, &TableCell{
 				Type: "raw_text",
