@@ -1,0 +1,16 @@
+apiVersion: v2
+name: kubeai-chatbot
+description: A Helm chart for kubeai-chatbot
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+sources:
+  - https://www.github.com/KongZ/kubeai-chatbot
+maintainers:
+  - name: KongZ
+    email: goonohc@gmail.com
+keywords:
+  - k8s
+  - kubernetese
+  - ai
+  - slack
