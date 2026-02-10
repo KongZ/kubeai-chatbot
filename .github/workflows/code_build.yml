@@ -1,0 +1,50 @@
+name: Build and Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+          cache-dependency-path: |
+            **/go.sum
+            **/go.mod
+
+      - name: Download modules
+        run: |
+          go mod download
+
+      - name: Run Static Analysis
+        uses: dominikh/staticcheck-action@v1.4.0
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        env:
+          GOROOT: ''
+        with:
+          args: ' -no-fail ./...'
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test with the Go CLI
+        run: go test -race -cover -v -coverprofile=coverage.txt ./...

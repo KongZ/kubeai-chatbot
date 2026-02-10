@@ -1,0 +1,36 @@
+# Binary
+./kubeai-chatbot
+bin/
+.build/
+
+# Log files
+*.log
+trace.log
+prompt.log
+app.log
+
+# OS specific files
+.DS_Store
+.env
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.kiro
+
+# Go specific
+*.exe
+*.test
+*.prof
+*.out
+.aider*
+# Added by goreleaser init:
+dist/
+
+# Ignore generated credentials from google-github-actions/auth
+gha-creds-*.json
+
+# air config
+.air.toml

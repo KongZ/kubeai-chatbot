@@ -1,6 +1,8 @@
 apiVersion: v2
 name: kubeai-chatbot
-description: A Helm chart for kubeai-chatbot
+description: KubeAI Chatbot server for integration with Slack that offers detailed management of Kubernetes clusters
+home: https://github.com/KongZ/kubeai-chatbot
+icon: https://github.com/KongZ/kubeai-chatbot/blob/main/docs/kubeai-chatbot.png?raw=true
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
@@ -11,6 +13,13 @@ maintainers:
     email: goonohc@gmail.com
 keywords:
   - k8s
-  - kubernetese
+  - kubernetes
   - ai
   - slack
+  - chatbot
+  - devops
+  - infrastructure
+  - aws
+  - gcp
+  - eks
+  - gke

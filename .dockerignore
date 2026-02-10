@@ -1,0 +1,9 @@
+.git
+kubeai-chatbot
+bin/
+*.exe
+coverage.txt
+.gemini/
+.kiro/
+.vscode/
+brain/
