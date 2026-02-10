@@ -114,6 +114,14 @@ KubeAI Chatbot is built with safety as a priority:
 - **Immutable Secrets**: The bot is hard-coded to refuse any request involving `kubectl secrets`. This prevention happens at both the LLM prompt level and the tool execution validator.
 - **Confirmation Flow**: By default, `AUTOMATIC_MODIFY_RESOURCES` is set to `false`. The bot will generate resource-modifying commands but will not execute them, instead providing the command for you to run manually.
 
+## 📸 Screenshots
+
+|                             |                             |
+| :-------------------------: | :-------------------------: |
+| ![1](docs/screenshot_1.png) | ![2](docs/screenshot_2.png) |
+| ![3](docs/screenshot_3.png) | ![4](docs/screenshot_4.png) |
+| ![5](docs/screenshot_5.png) |                             |
+
 ## 📜 Credits & Licensing
 
 This project is a derivative work based on [kubectl-ai](https://github.com/GoogleCloudPlatform/kubectl-ai), originally developed by Google LLC.

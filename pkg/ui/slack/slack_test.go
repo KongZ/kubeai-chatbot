@@ -675,3 +675,45 @@ func TestNewTableBlockLimits(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeInlineHeaders verifies that markdown headers without line breaks after them
+// are correctly normalized to have the content on a separate line.
+func TestNormalizeInlineHeaders(t *testing.T) {
+	s := &SlackUI{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "header with emoji and inline text",
+			input:    "### 💡 Comparison with Working PodI noticed that your other pod",
+			expected: "### 💡 Comparison with Working Pod\nI noticed that your other pod",
+		},
+		{
+			name:     "header with emoji and inline text (different pattern)",
+			input:    "### 🚀 RecommendationTo fix this, you should",
+			expected: "### 🚀 Recommendation\nTo fix this, you should",
+		},
+		{
+			name:     "normal header with line break",
+			input:    "### Header Text\n\nSome content",
+			expected: "### Header Text\n\nSome content",
+		},
+		{
+			name:     "header without inline text",
+			input:    "### Just a Header",
+			expected: "### Just a Header",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.normalizeInlineHeaders(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizeInlineHeaders() failed\nInput:\n%s\n\nExpected:\n%s\n\nGot:\n%s", tt.input, tt.expected, result)
+			}
+		})
+	}
+}

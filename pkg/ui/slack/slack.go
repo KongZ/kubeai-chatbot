@@ -434,7 +434,8 @@ func (s *SlackUI) generateBlocks(text string, includeContext bool) []slack.Block
 func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	var blocks []slack.Block
 
-	// First, normalize tables that might be on a single line
+	// First, normalize inline headers and tables
+	text = s.normalizeInlineHeaders(text)
 	text = s.normalizeInlineTables(text)
 
 	lines := strings.Split(text, "\n")
@@ -595,6 +596,148 @@ func (s *SlackUI) parseMarkdownTable(lines []string) ([]string, [][]string) {
 	}
 
 	return headers, rows
+}
+
+// normalizeInlineHeaders adds line breaks after markdown headers that are followed by text without a newline.
+// Example: "### HeaderText here" becomes "### Header\nText here"
+func (s *SlackUI) normalizeInlineHeaders(text string) string {
+	lines := strings.Split(text, "\n")
+	var result []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check if line starts with markdown header
+		if strings.HasPrefix(trimmed, "###") {
+			// Find where the header text ends (after the header marker and any spaces/emojis)
+			headerStart := strings.Index(line, "###") + 3
+			restOfLine := line[headerStart:]
+
+			// Skip initial spaces
+			restOfLine = strings.TrimLeft(restOfLine, " ")
+
+			// Check if there's text after the header that should be on a new line
+			// Look for patterns like: "### 💡 HeaderTextWithoutSpace" or "### Header TextHere"
+			// We want to split after the first "word" (which might include emojis)
+
+			// Find the first lowercase letter after uppercase/emoji sequence
+			// This indicates where the header ends and content begins
+			headerEnd := -1
+			inHeaderText := false
+
+			for i, r := range restOfLine {
+				// Skip emojis and spaces at the start
+				if i < 10 && (r >= 0x1F300 || r == ' ') {
+					continue
+				}
+
+				// If we see an uppercase letter or start of word, we're in header
+				if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+					inHeaderText = true
+					continue
+				}
+
+				// If we're in header text and see a capital letter followed by lowercase
+				// or see text that looks like start of a sentence, that's where to split
+				if inHeaderText && i > 0 {
+					// Check for patterns like "PodI" -> split before "I"
+					prevRune := rune(restOfLine[i-1])
+					if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
+						// Lowercase followed by uppercase - likely start of new word
+						headerEnd = i
+						break
+					}
+				}
+			}
+
+			if headerEnd > 0 {
+				headerText := strings.TrimSpace(restOfLine[:headerEnd])
+				contentText := strings.TrimSpace(restOfLine[headerEnd:])
+				result = append(result, "### "+headerText)
+				if contentText != "" {
+					result = append(result, contentText)
+				}
+			} else {
+				result = append(result, line)
+			}
+		} else if strings.HasPrefix(trimmed, "##") {
+			// Similar logic for ## headers
+			headerStart := strings.Index(line, "##") + 2
+			restOfLine := line[headerStart:]
+			restOfLine = strings.TrimLeft(restOfLine, " ")
+
+			headerEnd := -1
+			inHeaderText := false
+
+			for i, r := range restOfLine {
+				if i < 10 && (r >= 0x1F300 || r == ' ') {
+					continue
+				}
+				if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+					inHeaderText = true
+					continue
+				}
+				if inHeaderText && i > 0 {
+					prevRune := rune(restOfLine[i-1])
+					if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
+						headerEnd = i
+						break
+					}
+				}
+			}
+
+			if headerEnd > 0 {
+				headerText := strings.TrimSpace(restOfLine[:headerEnd])
+				contentText := strings.TrimSpace(restOfLine[headerEnd:])
+				result = append(result, "## "+headerText)
+				if contentText != "" {
+					result = append(result, contentText)
+				}
+			} else {
+				result = append(result, line)
+			}
+		} else if strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, "##") {
+			// Similar logic for # headers
+			headerStart := strings.Index(line, "#") + 1
+			restOfLine := line[headerStart:]
+			restOfLine = strings.TrimLeft(restOfLine, " ")
+
+			headerEnd := -1
+			inHeaderText := false
+
+			for i, r := range restOfLine {
+				if i < 10 && (r >= 0x1F300 || r == ' ') {
+					continue
+				}
+				if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+					inHeaderText = true
+					continue
+				}
+				if inHeaderText && i > 0 {
+					prevRune := rune(restOfLine[i-1])
+					if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
+						headerEnd = i
+						break
+					}
+				}
+			}
+
+			if headerEnd > 0 {
+				headerText := strings.TrimSpace(restOfLine[:headerEnd])
+				contentText := strings.TrimSpace(restOfLine[headerEnd:])
+				result = append(result, "# "+headerText)
+				if contentText != "" {
+					result = append(result, contentText)
+				}
+			} else {
+				result = append(result, line)
+			}
+		} else {
+			result = append(result, line)
+		}
+	}
+
+	return strings.Join(result, "\n")
 }
 
 // normalizeInlineTables converts inline tables (tables without line breaks) to multi-line format
