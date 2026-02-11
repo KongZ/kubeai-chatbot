@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -141,6 +142,11 @@ func TestFormatForSlack(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("ClearScreen call", func(t *testing.T) {
+		ui := &SlackUI{}
+		ui.ClearScreen() // Should do nothing, but adds coverage
+	})
 }
 
 // TestMarkdownToBlocks verifies that markdown text is correctly parsed into Slack Block Kit blocks.
@@ -311,6 +317,8 @@ func TestHandleSlackEventsURLVerification(t *testing.T) {
 	signingSecret := "test-secret"
 	ui := &SlackUI{
 		signingSecret:   signingSecret,
+		manager:         &mockAgentManager{},
+		apiClient:       &mockSlackAPI{},
 		processedEvents: make(map[string]time.Time),
 		activeTriggers:  make(map[string]string),
 	}
@@ -338,6 +346,74 @@ func TestHandleSlackEventsURLVerification(t *testing.T) {
 
 	if rr.Body.String() != "hello-world" {
 		t.Errorf("expected body 'hello-world', got %q", rr.Body.String())
+	}
+}
+
+// TestHandleSlackEvents_Callback verifies processing of Slack callback events (app mentions).
+func TestHandleSlackEvents_Callback(t *testing.T) {
+	signingSecret := "test-secret"
+	sm, _ := sessions.NewSessionManager("memory")
+	ui := &SlackUI{
+		signingSecret:  signingSecret,
+		sessionManager: sm,
+		manager: &mockAgentManager{
+			GetAgentFunc: func(ctx context.Context, sessionID string) (*agent.Agent, error) {
+				return &agent.Agent{Input: make(chan any, 1), Session: &api.Session{ID: sessionID}}, nil
+			},
+		},
+		apiClient:       &mockSlackAPI{},
+		processedEvents: make(map[string]time.Time),
+		activeTriggers:  make(map[string]string),
+	}
+
+	body := `{"type":"event_callback","event":{"type":"app_mention","channel":"C1","ts":"1.1","text":"hello"}}`
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+	msg := fmt.Sprintf("v0:%s:%s", ts, body)
+	h := hmac.New(sha256.New, []byte(signingSecret))
+	h.Write([]byte(msg))
+	sig := fmt.Sprintf("v0=%s", hex.EncodeToString(h.Sum(nil)))
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/events", strings.NewReader(body))
+	req.Header.Set("X-Slack-Signature", sig)
+	req.Header.Set("X-Slack-Request-Timestamp", ts)
+
+	rr := httptest.NewRecorder()
+	ui.handleSlackEvents(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+// TestHandleSlackEvents_BotMessage verifies that messages from bots are ignored.
+func TestHandleSlackEvents_BotMessage(t *testing.T) {
+	signingSecret := "test-secret"
+	sm, _ := sessions.NewSessionManager("memory")
+	ui := &SlackUI{
+		signingSecret:   signingSecret,
+		sessionManager:  sm,
+		manager:         &mockAgentManager{},
+		apiClient:       &mockSlackAPI{},
+		processedEvents: make(map[string]time.Time),
+		activeTriggers:  make(map[string]string),
+	}
+
+	body := `{"type":"event_callback","event":{"type":"message","bot_id":"B1","text":"hello"}}`
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+	msg := fmt.Sprintf("v0:%s:%s", ts, body)
+	h := hmac.New(sha256.New, []byte(signingSecret))
+	h.Write([]byte(msg))
+	sig := fmt.Sprintf("v0=%s", hex.EncodeToString(h.Sum(nil)))
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/events", strings.NewReader(body))
+	req.Header.Set("X-Slack-Signature", sig)
+	req.Header.Set("X-Slack-Request-Timestamp", ts)
+
+	rr := httptest.NewRecorder()
+	ui.handleSlackEvents(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 }
 
@@ -616,6 +692,25 @@ func TestMarkdownToBlocksWithEmojis(t *testing.T) {
 	}
 }
 
+// TestTableBlockMethods verifies the implementation of the slack.Block interface
+// for the custom TableBlock.
+func TestTableBlockMethods(t *testing.T) {
+	tb := &TableBlock{
+		TypeVal:    "table",
+		BlockIDVal: "B1",
+	}
+
+	if tb.BlockType() != "table" {
+		t.Errorf("expected table, got %s", tb.BlockType())
+	}
+	if tb.BlockID() != "B1" {
+		t.Errorf("expected B1, got %s", tb.BlockID())
+	}
+	if tb.ID() != "B1" {
+		t.Errorf("expected B1, got %s", tb.ID())
+	}
+}
+
 // TestNewTableBlockLimits verifies that table blocks respect Slack's limits
 // of maximum 5 columns and 50 rows (including header).
 func TestNewTableBlockLimits(t *testing.T) {
@@ -713,6 +808,352 @@ func TestNormalizeInlineHeaders(t *testing.T) {
 			result := s.normalizeInlineHeaders(tt.input)
 			if result != tt.expected {
 				t.Errorf("normalizeInlineHeaders() failed\nInput:\n%s\n\nExpected:\n%s\n\nGot:\n%s", tt.input, tt.expected, result)
+			}
+		})
+	}
+}
+
+// TestUploadSnippet verifies the file uploading and fallback mechanisms when a message is too long
+// or complex. It tests both successful upload and fallback to a regular message on error.
+func TestUploadSnippet(t *testing.T) {
+	tests := []struct {
+		name              string
+		uploadError       error
+		expectFallbackMsg bool
+	}{
+		{
+			name:              "successful upload",
+			uploadError:       nil,
+			expectFallbackMsg: false,
+		},
+		{
+			name:              "upload failure with fallback",
+			uploadError:       fmt.Errorf("upload failed"),
+			expectFallbackMsg: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			postMsgCalled := false
+			uploadCalled := false
+
+			mockAPI := &mockSlackAPI{
+				UploadFileV2Func: func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
+					uploadCalled = true
+					return nil, tt.uploadError
+				},
+				PostMessageFunc: func(channelID string, options ...slack.MsgOption) (string, string, error) {
+					postMsgCalled = true
+					return "", "", nil
+				},
+			}
+
+			ui := &SlackUI{apiClient: mockAPI}
+			ui.uploadSnippet("C123", "123.456", "Long content")
+
+			if !uploadCalled {
+				t.Error("expected UploadFileV2 to be called")
+			}
+			if tt.expectFallbackMsg && !postMsgCalled {
+				t.Error("expected PostMessage to be called as fallback")
+			}
+			if !tt.expectFallbackMsg && postMsgCalled {
+				t.Error("did not expect PostMessage to be called")
+			}
+		})
+	}
+}
+
+// TestPostToSlack verifies the logic for deciding between sending a message as blocks or
+// uploading it as a snippet. It also tests fallback from invalid blocks to snippet.
+func TestPostToSlack(t *testing.T) {
+	tests := []struct {
+		name          string
+		text          string
+		postError     error
+		expectUpload  bool
+		expectPostMsg bool
+	}{
+		{
+			name:          "normal message uses blocks",
+			text:          "simple message",
+			expectUpload:  false,
+			expectPostMsg: true,
+		},
+		{
+			name:          "long message uses snippet",
+			text:          strings.Repeat("a", 3001),
+			expectUpload:  true,
+			expectPostMsg: false,
+		},
+		{
+			name:          "invalid blocks fallback to snippet",
+			text:          "invalid-blocks-text",
+			postError:     fmt.Errorf("invalid_blocks"),
+			expectUpload:  true,
+			expectPostMsg: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uploadCalled := false
+			postMsgCalled := false
+
+			mockAPI := &mockSlackAPI{
+				PostMessageFunc: func(channelID string, options ...slack.MsgOption) (string, string, error) {
+					postMsgCalled = true
+					return "", "", tt.postError
+				},
+				UploadFileV2Func: func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
+					uploadCalled = true
+					return nil, nil
+				},
+			}
+
+			ui := &SlackUI{
+				apiClient:      mockAPI,
+				agentName:      "KubeAI",
+				contextMessage: "Context",
+			}
+			ui.postToSlack("C123", "ts", tt.text, true)
+
+			if tt.expectUpload && !uploadCalled {
+				t.Error("expected uploadSnippet to be called")
+			}
+			if tt.expectPostMsg && !postMsgCalled {
+				t.Error("expected PostMessage to be called")
+			}
+		})
+	}
+}
+
+// TestHandleSlackEvents_Validation verifies that unauthorized and malformed requests
+// to the Slack events endpoint are correctly rejected with appropriate status codes.
+func TestHandleSlackEvents_Validation(t *testing.T) {
+	ui := &SlackUI{
+		signingSecret: "secret",
+	}
+
+	t.Run("invalid signature", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/slack/events", strings.NewReader(`{"type":"event_callback"}`))
+		req.Header.Set("X-Slack-Signature", "v0=invalid")
+		req.Header.Set("X-Slack-Request-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+		rr := httptest.NewRecorder()
+		ui.handleSlackEvents(rr, req)
+
+		if rr.Code != http.StatusUnauthorized && rr.Code != http.StatusBadRequest {
+			t.Errorf("expected unauthorized or bad request, got %d", rr.Code)
+		}
+	})
+
+	t.Run("invalid body", func(t *testing.T) {
+		// Mock a valid signature for an invalid body
+		body := "invalid-json"
+		ts := fmt.Sprintf("%d", time.Now().Unix())
+		msg := fmt.Sprintf("v0:%s:%s", ts, body)
+		h := hmac.New(sha256.New, []byte("secret"))
+		h.Write([]byte(msg))
+		sig := fmt.Sprintf("v0=%s", hex.EncodeToString(h.Sum(nil)))
+
+		req := httptest.NewRequest(http.MethodPost, "/slack/events", strings.NewReader(body))
+		req.Header.Set("X-Slack-Signature", sig)
+		req.Header.Set("X-Slack-Request-Timestamp", ts)
+
+		rr := httptest.NewRecorder()
+		ui.handleSlackEvents(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected internal error, got %d", rr.Code)
+		}
+	})
+}
+
+// TestSlackUI_NewSlackUI_Errors verifies that the SlackUI constructor handles
+// missing environment variables correctly by returning an error.
+func TestSlackUI_NewSlackUI_Errors(t *testing.T) {
+	os.Unsetenv("SLACK_BOT_TOKEN")
+	os.Unsetenv("SLACK_SIGNING_SECRET")
+
+	am := &mockAgentManager{}
+	sm, _ := sessions.NewSessionManager("memory")
+	ui, err := NewSlackUI(am, sm, "model", "provider", "8888", "agent", "msg")
+	if err == nil {
+		t.Error("expected error due to missing env vars, got nil")
+	}
+	if ui != nil {
+		t.Error("expected nil UI on error")
+	}
+}
+
+// TestSlackUI_NewSlackUI success case
+func TestSlackUI_NewSlackUI_Success(t *testing.T) {
+	os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
+	os.Setenv("SLACK_SIGNING_SECRET", "test-secret")
+	defer os.Unsetenv("SLACK_BOT_TOKEN")
+	defer os.Unsetenv("SLACK_SIGNING_SECRET")
+
+	am := &mockAgentManager{
+		SetAgentCreatedCallbackFunc: func(f func(*agent.Agent)) {},
+	}
+	sm, _ := sessions.NewSessionManager("memory")
+
+	ui, err := NewSlackUI(am, sm, "model", "provider", "127.0.0.1:0", "agent", "msg")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ui == nil {
+		t.Fatal("expected UI, got nil")
+	}
+}
+
+// TestEnsureAgentListener verifies the handling of agent output messages,
+// including removing typing indicators and posting various message types to Slack.
+func TestEnsureAgentListener(t *testing.T) {
+	outputCh := make(chan any, 5)
+	sessionID := "slack-C1-T1"
+	sess := &api.Session{ID: sessionID}
+
+	mockAgent := &agent.Agent{
+		Output:  outputCh,
+		Session: sess,
+	}
+
+	postCalled := make(chan string, 5)
+	removeReactionCalled := make(chan bool, 1)
+
+	mockAPI := &mockSlackAPI{
+		PostMessageFunc: func(channelID string, options ...slack.MsgOption) (string, string, error) {
+			postCalled <- channelID
+			return "", "", nil
+		},
+		RemoveReactionFunc: func(name string, item slack.ItemRef) error {
+			removeReactionCalled <- true
+			return nil
+		},
+	}
+
+	ui := &SlackUI{
+		apiClient:      mockAPI,
+		activeTriggers: map[string]string{sessionID: "trigger-ts"},
+	}
+
+	ui.ensureAgentListener(mockAgent)
+
+	// Send an agent message
+	outputCh <- &api.Message{
+		Source:  api.MessageSourceAgent,
+		Payload: "hello world",
+		Type:    api.MessageTypeText,
+	}
+
+	// Verify indicator removed
+	select {
+	case <-removeReactionCalled:
+		// success
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timed out waiting for reaction removal")
+	}
+
+	// Verify posted to slack
+	select {
+	case channel := <-postCalled:
+		if channel != "C1" {
+			t.Errorf("expected channel C1, got %s", channel)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timed out waiting for post to slack")
+	}
+
+	// Test tool call request wrapping
+	outputCh <- &api.Message{
+		Source:  api.MessageSourceAgent,
+		Payload: "ls -l",
+		Type:    api.MessageTypeToolCallRequest,
+	}
+
+	select {
+	case <-postCalled:
+		// success
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timed out waiting for tool call post")
+	}
+
+	// Test error message
+	outputCh <- &api.Message{
+		Source:  api.MessageSourceAgent,
+		Payload: fmt.Errorf("agent error"),
+		Type:    api.MessageTypeError,
+	}
+
+	select {
+	case <-postCalled:
+		// success
+	case <-time.After(500 * time.Millisecond):
+		t.Error("timed out waiting for error post")
+	}
+
+	close(outputCh)
+}
+
+// TestFormatForSlack_More covers additional edge cases in mrkdwn conversion,
+// such as triple asterisks and complex combinations.
+func TestFormatForSlack_More(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "triple asterisk",
+			input:    "***bold and italic***",
+			expected: "__bold and italic__",
+		},
+		{
+			name:     "mixed markers",
+			input:    "**bold** and *italic* and ***both***",
+			expected: "*bold* and _italic_ and __both__",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := formatForSlack(tt.input)
+			if actual != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, actual)
+			}
+		})
+	}
+}
+
+// TestNormalizeInlineHeaders_More covers the different levels of headers in normalization.
+func TestNormalizeInlineHeaders_More(t *testing.T) {
+	s := &SlackUI{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "H2 normalization",
+			input:    "## MyHeader Content starts here",
+			expected: "## My\nHeader Content starts here",
+		},
+		{
+			name:     "H1 normalization",
+			input:    "# MyHeader Content starts here",
+			expected: "# My\nHeader Content starts here",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.normalizeInlineHeaders(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
 	}

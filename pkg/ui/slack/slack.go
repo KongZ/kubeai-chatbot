@@ -154,6 +154,11 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(body) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	sv, err := slack.NewSecretsVerifier(r.Header, s.signingSecret)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
