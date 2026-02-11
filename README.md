@@ -6,6 +6,17 @@ A powerful Slack chatbot for Kubernetes cluster management, powered by AI. It al
 ![License](https://img.shields.io/badge/License-Apache%202.0-D22128?style=flat)
 ![Platform](https://img.shields.io/badge/Platform-Slack-4A154B?style=flat&logo=slack)
 
+## 💡 Why use KubeAI?
+
+In many organizations, DevOps teams often become a bottleneck for developers who need to understand why their services aren't deploying correctly or why pods are crashing. Even when engineering teams have cluster access, the steep learning curve of Kubernetes can be daunting.
+
+KubeAI Chatbot addresses these pain points by:
+- **Empowering Developers**: Acting as an "on-demand DevOps partner" in Slack, helping teams troubleshoot and learn Kubernetes in real-time.
+- **Reducing DevOps Fatigue**: Handling routine status checks and diagnostic questions, allowing DevOps engineers to focus on higher-value infrastructure work.
+- **Bridging the Knowledge Gap**: Translating complex Kubernetes states into understandable natural language and actionable insights.
+
+![2](docs/screenshot_2.png)
+
 ## ✨ Features
 
 - **Natural Language K8s**: Manage your clusters by simply chatting in Slack.
@@ -114,14 +125,6 @@ KubeAI Chatbot is built with safety as a priority:
 - **Immutable Secrets**: The bot is hard-coded to refuse any request involving `kubectl secrets`. This prevention happens at both the LLM prompt level and the tool execution validator.
 - **Confirmation Flow**: By default, `AUTOMATIC_MODIFY_RESOURCES` is set to `false`. The bot will generate resource-modifying commands but will not execute them, instead providing the command for you to run manually.
 - **Use Secret Manager**: Although KubeAI Chatbot is built with secret requests denied, it is strongly recommended to use a secret manager to store sensitive information such as API keys, tokens, and other credentials. [piggy](https://github.com/KongZ/piggy) supports AWS Secret Manager and provides highly secure encapsulation without leaving any trace of the secret in Kubernetes.
-
-## 📸 Screenshots
-
-|                             |                             |
-| :-------------------------: | :-------------------------: |
-| ![1](docs/screenshot_1.png) | ![2](docs/screenshot_2.png) |
-| ![3](docs/screenshot_3.png) | ![4](docs/screenshot_4.png) |
-| ![5](docs/screenshot_5.png) |                             |
 
 ## 📜 Credits & Licensing
 
