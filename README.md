@@ -126,6 +126,11 @@ KubeAI Chatbot is built with safety as a priority:
 - **Confirmation Flow**: By default, `AUTOMATIC_MODIFY_RESOURCES` is set to `false`. The bot will generate resource-modifying commands but will not execute them, instead providing the command for you to run manually.
 - **Use Secret Manager**: Although KubeAI Chatbot is built with secret requests denied, it is strongly recommended to use a secret manager to store sensitive information such as API keys, tokens, and other credentials. [piggy](https://github.com/KongZ/piggy) supports AWS Secret Manager and provides highly secure encapsulation without leaving any trace of the secret in Kubernetes.
 
+## 🏗️ Architecture
+
+- [System Architecture](docs/architecture.md)
+- [Cross-Cluster Access Setup](docs/cross-cluster-access.md)
+
 ## 📜 Credits & Licensing
 
 This project is a derivative work based on [kubectl-ai](https://github.com/GoogleCloudPlatform/kubectl-ai), originally developed by Google LLC.

@@ -79,7 +79,7 @@ sequenceDiagram
     participant U as Slack User
     participant S as Slack API
     participant UI as Slack UI
-    participant Ag as AI Agent
+    participant Ag as KubeAI Chatbot
     participant L as LLM (Gemini)
     participant K as Kubernetes
 
@@ -92,6 +92,7 @@ sequenceDiagram
     UI->>Ag: Process Query
     Ag->>L: Context + Query
     L-->>Ag: I need to run 'kubectl get pods'
+    Ag->>Ag: Confirm with security constraints
     Ag->>K: Execute 'kubectl get pods'
     K-->>Ag: Pod list data
     Ag->>L: Execution Result
