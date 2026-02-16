@@ -16,7 +16,6 @@ rules:
       - namespaces
       - nodes
       - configmaps
-      - secrets
       - persistentvolumes
       - persistentvolumeclaims
       - events
@@ -61,7 +60,6 @@ rules:
       - pods
       - services
       - configmaps
-      - secrets
       - namespaces
     verbs: ["create", "update", "patch", "delete"]
   
