@@ -129,7 +129,7 @@ KubeAI Chatbot is built with safety as a priority:
 ## 🏗️ Architecture
 
 - [System Architecture](docs/architecture.md)
-- [Cross-Cluster Access Setup](docs/cross-cluster-access.md)
+- [Cross-Cluster Access Setup](docs/cross_cluster_access.md)
 
 ## 📜 Credits & Licensing
 
