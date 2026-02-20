@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -154,8 +155,14 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 		AutomaticModifyResources: true,
 		Session: &api.Session{
 			ID:               "test-session",
-			ChatMessageStore: store,
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
 			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
 		},
 	}
 
@@ -190,7 +197,7 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 
 	// Expect tool invocation messages and final response.
 	sawToolReq, sawToolResp, sawFinal := false, false, false
-	for !(sawToolReq && sawToolResp && sawFinal) {
+	for !sawToolReq || !sawToolResp || !sawFinal {
 		select {
 		case v := <-a.Output:
 			m, ok := v.(*api.Message)
@@ -232,8 +239,9 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 	defer cancel()
 
 	store := sessions.NewInMemoryChatStore()
-	store.AddChatMessage(&api.Message{ID: "u1", Source: api.MessageSourceUser, Type: api.MessageTypeText, Payload: "hi"})
-	store.AddChatMessage(&api.Message{ID: "a1", Source: api.MessageSourceAgent, Type: api.MessageTypeText, Payload: "hello"})
+	now := time.Now()
+	_ = store.AddChatMessage(&api.Message{ID: "u1", Source: api.MessageSourceUser, Type: api.MessageTypeText, Payload: "hi", Timestamp: now})
+	_ = store.AddChatMessage(&api.Message{ID: "a1", Source: api.MessageSourceAgent, Type: api.MessageTypeText, Payload: "hello", Timestamp: now})
 
 	client := mocks.NewMockClient(ctrl)
 	chat := mocks.NewMockChat(ctrl)
@@ -252,8 +260,14 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 		Tools:            toolset,
 		Session: &api.Session{
 			ID:               "test-session",
-			ChatMessageStore: store,
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
 			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
 		},
 	}
 
@@ -278,7 +292,7 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 	a.Input <- &api.UserInputResponse{Query: "clear"}
 
 	sawClear, sawPrompt := false, false
-	for !(sawClear && sawPrompt) {
+	for !sawClear || !sawPrompt {
 		select {
 		case v := <-a.Output:
 			m, ok := v.(*api.Message)
@@ -361,8 +375,14 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 		AutomaticModifyResources: false, // EXPLICITLY DISABLED
 		Session: &api.Session{
 			ID:               "test-session",
-			ChatMessageStore: store,
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
 			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
 		},
 	}
 

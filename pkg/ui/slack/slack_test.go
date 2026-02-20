@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -271,7 +270,14 @@ func TestProcessMessage(t *testing.T) {
 	mockAgent := &agent.Agent{
 		Input: inputCh,
 		Session: &api.Session{
-			ID: "slack-C123-123.456",
+			ID:           "slack-C123-123.456",
+			Name:         "Test Session",
+			ProviderID:   "test-provider",
+			ModelID:      "test-model",
+			SlackUserID:  "U123456",
+			AgentState:   api.AgentStateIdle,
+			CreatedAt:    time.Now(),
+			LastModified: time.Now(),
 		},
 	}
 
@@ -289,13 +295,15 @@ func TestProcessMessage(t *testing.T) {
 		activeTriggers:  make(map[string]string),
 		agentName:       "KubeAI",
 		contextMessage:  "Done",
+		defaultModel:    "model",
+		defaultProvider: "provider",
 	}
 
 	channel := "C123"
 	ts := "123.456"
 	text := "<@U789> get pods"
 
-	ui.processMessage(channel, "", ts, text)
+	ui.processMessage(channel, "", ts, text, "U789")
 
 	select {
 	case untypedMsg := <-inputCh:
@@ -358,7 +366,19 @@ func TestHandleSlackEvents_Callback(t *testing.T) {
 		sessionManager: sm,
 		manager: &mockAgentManager{
 			GetAgentFunc: func(ctx context.Context, sessionID string) (*agent.Agent, error) {
-				return &agent.Agent{Input: make(chan any, 1), Session: &api.Session{ID: sessionID}}, nil
+				return &agent.Agent{
+					Input: make(chan any, 1),
+					Session: &api.Session{
+						ID:           sessionID,
+						Name:         "Test Session",
+						ProviderID:   "provider",
+						ModelID:      "model",
+						SlackUserID:  "U1",
+						AgentState:   api.AgentStateIdle,
+						CreatedAt:    time.Now(),
+						LastModified: time.Now(),
+					},
+				}, nil
 			},
 		},
 		apiClient:       &mockSlackAPI{},
@@ -426,7 +446,7 @@ func TestHealthz(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -974,8 +994,8 @@ func TestHandleSlackEvents_Validation(t *testing.T) {
 // TestSlackUI_NewSlackUI_Errors verifies that the SlackUI constructor handles
 // missing environment variables correctly by returning an error.
 func TestSlackUI_NewSlackUI_Errors(t *testing.T) {
-	os.Unsetenv("SLACK_BOT_TOKEN")
-	os.Unsetenv("SLACK_SIGNING_SECRET")
+	t.Setenv("SLACK_BOT_TOKEN", "")
+	t.Setenv("SLACK_SIGNING_SECRET", "")
 
 	am := &mockAgentManager{}
 	sm, _ := sessions.NewSessionManager("memory")
@@ -990,10 +1010,8 @@ func TestSlackUI_NewSlackUI_Errors(t *testing.T) {
 
 // TestSlackUI_NewSlackUI success case
 func TestSlackUI_NewSlackUI_Success(t *testing.T) {
-	os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
-	os.Setenv("SLACK_SIGNING_SECRET", "test-secret")
-	defer os.Unsetenv("SLACK_BOT_TOKEN")
-	defer os.Unsetenv("SLACK_SIGNING_SECRET")
+	t.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
+	t.Setenv("SLACK_SIGNING_SECRET", "test-secret")
 
 	am := &mockAgentManager{
 		SetAgentCreatedCallbackFunc: func(f func(*agent.Agent)) {},
@@ -1014,7 +1032,16 @@ func TestSlackUI_NewSlackUI_Success(t *testing.T) {
 func TestEnsureAgentListener(t *testing.T) {
 	outputCh := make(chan any, 5)
 	sessionID := "slack-C1-T1"
-	sess := &api.Session{ID: sessionID}
+	sess := &api.Session{
+		ID:           sessionID,
+		Name:         "Test Session",
+		ProviderID:   "provider",
+		ModelID:      "model",
+		SlackUserID:  "U1",
+		AgentState:   api.AgentStateIdle,
+		CreatedAt:    time.Now(),
+		LastModified: time.Now(),
+	}
 
 	mockAgent := &agent.Agent{
 		Output:  outputCh,
@@ -1044,9 +1071,11 @@ func TestEnsureAgentListener(t *testing.T) {
 
 	// Send an agent message
 	outputCh <- &api.Message{
-		Source:  api.MessageSourceAgent,
-		Payload: "hello world",
-		Type:    api.MessageTypeText,
+		ID:        "msg-1",
+		Source:    api.MessageSourceAgent,
+		Payload:   "hello world",
+		Type:      api.MessageTypeText,
+		Timestamp: time.Now(),
 	}
 
 	// Verify indicator removed
@@ -1069,9 +1098,11 @@ func TestEnsureAgentListener(t *testing.T) {
 
 	// Test tool call request wrapping
 	outputCh <- &api.Message{
-		Source:  api.MessageSourceAgent,
-		Payload: "ls -l",
-		Type:    api.MessageTypeToolCallRequest,
+		ID:        "msg-2",
+		Source:    api.MessageSourceAgent,
+		Payload:   "ls -l",
+		Type:      api.MessageTypeToolCallRequest,
+		Timestamp: time.Now(),
 	}
 
 	select {
@@ -1083,9 +1114,11 @@ func TestEnsureAgentListener(t *testing.T) {
 
 	// Test error message
 	outputCh <- &api.Message{
-		Source:  api.MessageSourceAgent,
-		Payload: fmt.Errorf("agent error"),
-		Type:    api.MessageTypeError,
+		ID:        "msg-3",
+		Source:    api.MessageSourceAgent,
+		Payload:   fmt.Errorf("agent error"),
+		Type:      api.MessageTypeError,
+		Timestamp: time.Now(),
 	}
 
 	select {

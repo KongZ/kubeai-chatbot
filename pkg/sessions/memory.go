@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +17,7 @@ package sessions
 
 import (
 	"errors"
-	"sort"
+	"fmt"
 	"sync"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
@@ -43,6 +44,9 @@ func (m *memoryStore) GetSession(id string) (*api.Session, error) {
 }
 
 func (m *memoryStore) CreateSession(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for creation: %w", err)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -59,6 +63,9 @@ func (m *memoryStore) CreateSession(session *api.Session) error {
 }
 
 func (m *memoryStore) UpdateSession(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for update: %w", err)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -79,9 +86,7 @@ func (m *memoryStore) ListSessions() ([]*api.Session, error) {
 		sessions = append(sessions, session)
 	}
 
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].LastModified.After(sessions[j].LastModified)
-	})
+	sortSessionsByLastModified(sessions)
 
 	return sessions, nil
 }
@@ -114,6 +119,9 @@ func NewInMemoryChatStore() *InMemoryChatStore {
 
 // AddChatMessage adds a message to the store.
 func (s *InMemoryChatStore) AddChatMessage(record *api.Message) error {
+	if err := record.Validate(); err != nil {
+		return fmt.Errorf("invalid chat message: %w", err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messages = append(s.messages, record)
@@ -122,6 +130,11 @@ func (s *InMemoryChatStore) AddChatMessage(record *api.Message) error {
 
 // SetChatMessages replaces the entire chat history with a new one.
 func (s *InMemoryChatStore) SetChatMessages(newHistory []*api.Message) error {
+	for _, msg := range newHistory {
+		if err := msg.Validate(); err != nil {
+			return fmt.Errorf("invalid chat message in history: %w", err)
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messages = newHistory

@@ -1,0 +1,11 @@
+{
+  "ignore": [
+    "**/pkg/agent/**",
+    "**/gollm/**",
+    "**/demo/**",
+    "**/vendor/**",
+    "**/*_test.go"
+  ],
+  "threshold": 0.1,
+  "reporters": ["console"]
+}

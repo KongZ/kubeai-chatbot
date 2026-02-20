@@ -4,16 +4,16 @@ This guide explains how to configure KubeAI Chatbot to access multiple Kubernete
 
 ## Architecture Overview
 
-- **Cluster-A**: Where KubeAI Chatbot is deployed (AWS Account A)
-- **Cluster-B**: Target cluster to access (AWS Account B - different AWS account)
+  - **Cluster-A**: Where KubeAI Chatbot is deployed (AWS Account A)
+  - **Cluster-B**: Target cluster to access (AWS Account B - different AWS account)
 
 ## Prerequisites
 
-- AWS CLI installed and configured
-- kubectl installed
-- Helm 3.x installed
-- Access to both AWS accounts
-- Cluster-A and Cluster-B already created
+  - AWS CLI installed and configured
+  - kubectl installed
+  - Helm 3.x installed
+  - Access to both AWS accounts
+  - Cluster-A and Cluster-B already created
 
 ---
 
@@ -413,17 +413,17 @@ kubectl config get-contexts
 
 **Solution**: Check that:
 
-1. IAM role is correctly annotated on the service account
-2. aws-auth ConfigMap on Cluster-B includes the IAM role
-3. IRSA is properly configured with the correct OIDC provider
+  1. IAM role is correctly annotated on the service account
+  2. aws-auth ConfigMap on Cluster-B includes the IAM role
+  3. IRSA is properly configured with the correct OIDC provider
 
-### Issue: "Unable to connect to the server: dial tcp: lookup ... i/o timeout"
+### Issue: "Unable to connect to the server: dial tcp: lookup ... I/O timeout"
 
 **Solution**: Check that:
 
-1. Cluster-A's NAT Gateway IPs are added to Cluster-B's security group
-2. Security group allows inbound traffic on port 443
-3. Network connectivity between clusters is working
+  1. Cluster-A's NAT Gateway IPs are added to Cluster-B's security group
+  2. Security group allows inbound traffic on port 443
+  3. Network connectivity between clusters is working
 
 ### Issue: "error: exec plugin: invalid apiVersion"
 
@@ -449,17 +449,17 @@ kubectl exec -it deployment/kubeai-chatbot -n kubeai-chatbot -- aws eks describe
 
 ## Security Best Practices
 
-1. **Use least privilege**: Grant only the minimum required permissions
-2. **Rotate credentials**: Regularly rotate IAM roles and service account tokens
-3. **Audit access**: Enable CloudTrail and EKS audit logs
-4. **Network security**: Use security groups and network policies to restrict access
-5. **Secret management**: Use AWS Secrets Manager or external secrets operator for sensitive data
+  1. **Use least privilege**: Grant only the minimum required permissions
+  2. **Rotate credentials**: Regularly rotate IAM roles and service account tokens
+  3. **Audit access**: Enable CloudTrail and EKS audit logs
+  4. **Network security**: Use security groups and network policies to restrict access
+  5. **Secret management**: Use AWS Secrets Manager or external secrets operator for sensitive data
 
 ---
 
 ## References
 
-- [EKS IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
-- [EKS Cross-Account Access](https://docs.aws.amazon.com/eks/latest/userguide/cross-account-access.html)
-- [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
-- [AWS EKS Access Entries](https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html)
+  - [EKS IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latestuserguide/iam-roles-for-service-accounts.html)
+  - [EKS Cross-Account Access](https://docs.aws.amazon.com/eks/latest/userguidecross-account-access.html)
+  - [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authzrbac/)
+  - [AWS EKS Access Entries](https://docs.aws.amazon.com/eks/latest/userguideaccess-entries.html)

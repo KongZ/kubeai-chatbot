@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -105,7 +106,7 @@ func TestKubectlModifiesResource(t *testing.T) {
 			{"Complex jsonpath", "kubectl get pods -o=jsonpath='{range .items[*]}{.metadata.name}{\"\\t\"}{.status.phase}{\"\\n\"}{end}'", "no"},
 			{"Custom columns", "kubectl get pods -o=custom-columns=NAME:.metadata.name,STATUS:.status.phase", "no"},
 			{"Impersonation", "kubectl get pods --as=system:serviceaccount:default:deployer", "no"},
-			{"With token", "kubectl --token=eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9... get pods", "no"},
+			{"With token", "kubectl --token=eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9... get pods", "no"}, // gitleaks:allow fake key without value
 			{"Weird spacing", "kubectl     get    pods   -n   default", "no"},
 			{"kubectl in shell script with line continuation", "kubectl get pods \\\n  --namespace=production", "no"},
 			{"kubectl command split across lines in CI/CD", "kubectl delete pod \\\n  my-pod-name \\\n  --grace-period=30", "yes"},
@@ -428,7 +429,7 @@ func TestShellParserBehavior(t *testing.T) {
 						lit := arg.Lit()
 						if lit == "" {
 							var sb strings.Builder
-							syntax.NewPrinter().Print(&sb, arg)
+							_ = syntax.NewPrinter().Print(&sb, arg)
 							lit = strings.Trim(sb.String(), `"'`)
 						}
 						if lit != "" {
@@ -555,7 +556,7 @@ func TestKubectlAlwaysAtPosition0(t *testing.T) {
 					firstArg := call.Args[0].Lit()
 					if firstArg == "" {
 						var sb strings.Builder
-						syntax.NewPrinter().Print(&sb, call.Args[0])
+						_ = syntax.NewPrinter().Print(&sb, call.Args[0])
 						firstArg = strings.Trim(sb.String(), `"'`)
 					}
 

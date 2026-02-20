@@ -56,6 +56,7 @@ func main() {
 
 	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		cancel()
 		os.Exit(1)
 	}
 }
@@ -64,6 +65,14 @@ func run(ctx context.Context) error {
 	// klog setup
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
+
+	// Set verbosity from LOG_LEVEL env var if present
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		if err := klogFlags.Set("v", logLevel); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to set klog verbosity from LOG_LEVEL=%s: %v\n", logLevel, err)
+		}
+	}
+
 	klog.SetOutput(os.Stdout)
 	defer klog.Flush()
 
@@ -88,11 +97,16 @@ func run(ctx context.Context) error {
 
 	// Initialize journal recorder
 	recorder := &journal.LogRecorder{}
-	defer recorder.Close()
+	defer func() {
+		if err := recorder.Close(); err != nil {
+			klog.Errorf("error closing recorder: %v", err)
+		}
+	}()
 
 	// Agent factory
 	agentFactory := func(ctx context.Context) (*agent.Agent, error) {
-		client, err := gollm.NewClient(ctx, providerID)
+		var client gollm.Client
+		client, err = gollm.NewClient(ctx, providerID)
 		if err != nil {
 			return nil, fmt.Errorf("creating llm client: %w", err)
 		}
@@ -116,7 +130,11 @@ func run(ctx context.Context) error {
 	}
 
 	agentManager := agent.NewAgentManager(agentFactory, sessionManager)
-	defer agentManager.Close()
+	defer func() {
+		if err := agentManager.Close(); err != nil {
+			klog.Errorf("error closing agent manager: %v", err)
+		}
+	}()
 
 	var userInterface ui.UI
 	switch ui.Type(uiType) {

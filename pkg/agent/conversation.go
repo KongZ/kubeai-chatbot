@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -319,6 +320,9 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 
 	if c.Recorder != nil {
 		ctx = journal.ContextWithRecorder(ctx, c.Recorder)
+	}
+	if c.Session != nil && c.Session.SlackUserID != "" {
+		ctx = journal.ContextWithSlackUserID(ctx, c.Session.SlackUserID)
 	}
 
 	// Save unexpected error and return it in for RunOnce mode
@@ -845,6 +849,9 @@ func (c *Agent) NewSession() (string, error) {
 		ModelID:    c.Model,
 		ProviderID: c.Provider,
 	}
+	if c.Session != nil {
+		metadata.SlackUserID = c.Session.SlackUserID
+	}
 
 	newSession, err := manager.NewSession(metadata)
 	if err != nil {
@@ -920,6 +927,7 @@ func (c *Agent) SaveSession() (string, error) {
 		LastAccessed: time.Now(),
 		ModelID:      c.Model,
 		ProviderID:   c.Provider,
+		SlackUserID:  c.Session.SlackUserID,
 	}
 
 	newSession, err := manager.NewSession(metadata)
@@ -1288,7 +1296,6 @@ func candidateToShimCandidate(iterator gollm.ChatResponseIterator) (gollm.ChatRe
 			yield(nil, fmt.Errorf("parsing ReAct response %q: %w", buffer, err))
 			return
 		}
-		buffer = "" // TODO: any trailing text?
 		yield(&ShimResponse{candidate: parsedReActResp}, nil)
 	}, nil
 }

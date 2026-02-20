@@ -29,6 +29,7 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -v -o kubeai-ch
 
 # Runtime image with both AWS CLI and Google Cloud CLI
 FROM debian:bookworm-slim AS runtime
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG KUBECTL_VERSION
 ARG GCLOUD_CLI_VERSION
 ARG AWS_CLI_VERSION

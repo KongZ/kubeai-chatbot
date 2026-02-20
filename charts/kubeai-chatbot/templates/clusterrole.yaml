@@ -20,7 +20,7 @@ rules:
       - persistentvolumeclaims
       - events
     verbs: ["get", "list", "watch"]
-  
+
   # Read access to apps resources
   - apiGroups: ["apps"]
     resources:
@@ -29,21 +29,21 @@ rules:
       - replicasets
       - statefulsets
     verbs: ["get", "list", "watch"]
-  
+
   # Read access to batch resources
   - apiGroups: ["batch"]
     resources:
       - jobs
       - cronjobs
     verbs: ["get", "list", "watch"]
-  
+
   # Read access to networking
   - apiGroups: ["networking.k8s.io"]
     resources:
       - ingresses
       - networkpolicies
     verbs: ["get", "list", "watch"]
-  
+
   # Read access to RBAC (for inspection)
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources:
@@ -52,7 +52,7 @@ rules:
       - clusterroles
       - clusterrolebindings
     verbs: ["get", "list", "watch"]
-  
+
   {{- if .Values.rbac.allowWrite }}
   # Write access to resources (only if explicitly enabled)
   - apiGroups: [""]
@@ -62,7 +62,7 @@ rules:
       - configmaps
       - namespaces
     verbs: ["create", "update", "patch", "delete"]
-  
+
   - apiGroups: ["apps"]
     resources:
       - deployments
@@ -70,7 +70,7 @@ rules:
       - replicasets
       - statefulsets
     verbs: ["create", "update", "patch", "delete"]
-  
+
   - apiGroups: ["batch"]
     resources:
       - jobs

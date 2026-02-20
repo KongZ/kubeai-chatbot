@@ -168,6 +168,14 @@ affinity: {}
 
 # Environment variables
 env:
-  SLACK_BOT_TOKEN: ""
-  SLACK_SIGNING_SECRET: ""
+  SLACK_BOT_TOKEN: "replace-with-slack-token"
+  SLACK_SIGNING_SECRET: "replace-with-slack-signing-secret"
   GEMINI_API_KEY: ""
+  LOG_LEVEL: "2"
+  # SESSION_TYPE: "postgres"
+  # DB_HOST: ""
+  # DB_PORT: "5432"
+  # DB_USER: ""
+  # DB_PASSWORD: ""
+  # DB_NAME: ""
+  # DB_SSLMODE: "disable"
