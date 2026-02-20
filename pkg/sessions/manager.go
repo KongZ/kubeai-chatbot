@@ -18,10 +18,18 @@ package sessions
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 )
+
+// sortSessionsByLastModified sorts sessions in descending order by LastModified.
+func sortSessionsByLastModified(sessions []*api.Session) {
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].LastModified.After(sessions[j].LastModified)
+	})
+}
 
 type SessionManager struct {
 	store Store

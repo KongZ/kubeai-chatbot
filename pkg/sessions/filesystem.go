@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
@@ -147,9 +146,7 @@ func (f *filesystemStore) ListSessions() ([]*api.Session, error) {
 		sessions = append(sessions, session)
 	}
 
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].LastModified.After(sessions[j].LastModified)
-	})
+	sortSessionsByLastModified(sessions)
 
 	return sessions, nil
 }
