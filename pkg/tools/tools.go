@@ -154,9 +154,12 @@ func (t *ToolCall) InvokeTool(ctx context.Context, opt InvokeToolOptions) (any, 
 	recorder := journal.RecorderFromContext(ctx)
 
 	callID := uuid.NewString()
+	slackUserID := journal.SlackUserIDFromContext(ctx)
+
 	_ = recorder.Write(ctx, &journal.Event{
-		Timestamp: time.Now(),
-		Action:    "tool-request",
+		Timestamp:   time.Now(),
+		SlackUserID: slackUserID,
+		Action:      "tool-request",
 		Payload: ToolRequestEvent{
 			CallID:    callID,
 			Name:      t.name,
@@ -178,9 +181,10 @@ func (t *ToolCall) InvokeTool(ctx context.Context, opt InvokeToolOptions) (any, 
 			ev.Error = err.Error()
 		}
 		_ = recorder.Write(ctx, &journal.Event{
-			Timestamp: time.Now(),
-			Action:    "tool-response",
-			Payload:   ev,
+			Timestamp:   time.Now(),
+			SlackUserID: slackUserID,
+			Action:      "tool-response",
+			Payload:     ev,
 		})
 	}
 

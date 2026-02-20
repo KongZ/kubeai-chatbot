@@ -15,6 +15,7 @@
 package sessions
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 	"time"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
+	"github.com/uptrace/bun/dialect/pgdialect"
+	"github.com/uptrace/bun/driver/pgdriver"
 	"k8s.io/klog/v2"
 )
 
@@ -31,6 +34,7 @@ const KubeAIDirName = ".kubeai"
 type Metadata struct {
 	ProviderID   string    `json:"providerID"`
 	ModelID      string    `json:"modelID"`
+	SlackUserID  string    `json:"slackUserID"`
 	CreatedAt    time.Time `json:"createdAt"`
 	LastAccessed time.Time `json:"lastAccessed"`
 }
@@ -59,6 +63,13 @@ func NewStore(backend string) (Store, error) {
 		}
 		klog.Info("Created sessions working directory", "dir", basePath)
 		return newFilesystemStore(basePath), nil
+	case "postgres":
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			return nil, fmt.Errorf("DATABASE_URL environment variable is not set")
+		}
+		sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+		return newPostgresStore(sqldb, pgdialect.New())
 	default:
 		return nil, fmt.Errorf("unsupported sessions backend: %s", backend)
 	}

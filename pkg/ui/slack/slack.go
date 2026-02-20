@@ -195,18 +195,18 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 
 	if eventsAPIEvent.Type == slackevents.CallbackEvent {
 		innerEvent := eventsAPIEvent.InnerEvent
-		var channel, ts, threadTs, text string
+		var channel, ts, threadTs, text, userID string
 
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.AppMentionEvent:
-			channel, ts, threadTs, text = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text
+			channel, ts, threadTs, text, userID = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text, ev.User
 		case *slackevents.MessageEvent:
 			// Ignore messages from bots to prevent loops
 			if ev.BotID != "" || ev.SubType == "bot_message" {
 				w.WriteHeader(http.StatusOK)
 				return
 			}
-			channel, ts, threadTs, text = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text
+			channel, ts, threadTs, text, userID = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text, ev.User
 		default:
 			w.WriteHeader(http.StatusOK)
 			return
@@ -239,14 +239,14 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 
 		// Process in background
-		go s.processMessage(channel, threadTs, ts, text)
+		go s.processMessage(channel, threadTs, ts, text, userID)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *SlackUI) processMessage(channel, threadTS, ts, text string) {
+func (s *SlackUI) processMessage(channel, threadTS, ts, text, userID string) {
 	// Clean text (remove bot mention if any)
 	// Mentions look like <@U123456>
 	processedText := text
@@ -276,8 +276,9 @@ func (s *SlackUI) processMessage(channel, threadTS, ts, text string) {
 	if err != nil {
 		// Session not found, create new one
 		meta := sessions.Metadata{
-			ModelID:    s.defaultModel,
-			ProviderID: s.defaultProvider,
+			ModelID:     s.defaultModel,
+			ProviderID:  s.defaultProvider,
+			SlackUserID: userID,
 		}
 		session, err := s.sessionManager.NewSessionWithID(sessionID, meta)
 		if err != nil {

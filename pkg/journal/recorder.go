@@ -22,12 +22,16 @@ import (
 
 type contextKey string
 
-const RecorderKey contextKey = "journal-recorder"
+const (
+	RecorderKey    contextKey = "journal-recorder"
+	SlackUserIDKey contextKey = "slack-user-id"
+)
 
 type Event struct {
-	Timestamp time.Time `json:"timestamp"`
-	Action    string    `json:"action"`
-	Payload   any       `json:"payload,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
+	SlackUserID string    `json:"slack_user_id,omitempty"`
+	Action      string    `json:"action"`
+	Payload     any       `json:"payload,omitempty"`
 }
 
 // Action constants for journal events
@@ -57,4 +61,15 @@ func RecorderFromContext(ctx context.Context) Recorder {
 // ContextWithRecorder adds the recorder to the given context
 func ContextWithRecorder(ctx context.Context, recorder Recorder) context.Context {
 	return context.WithValue(ctx, RecorderKey, recorder)
+}
+
+// SlackUserIDFromContext extracts the slack user id from the given context
+func SlackUserIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(SlackUserIDKey).(string)
+	return id
+}
+
+// ContextWithSlackUserID adds the slack user id to the given context
+func ContextWithSlackUserID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, SlackUserIDKey, id)
 }

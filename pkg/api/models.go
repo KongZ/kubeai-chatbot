@@ -24,6 +24,7 @@ type Session struct {
 	Name             string
 	ProviderID       string
 	ModelID          string
+	SlackUserID      string
 	Messages         []*Message
 	AgentState       AgentState
 	CreatedAt        time.Time

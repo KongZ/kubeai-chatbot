@@ -295,7 +295,7 @@ func TestProcessMessage(t *testing.T) {
 	ts := "123.456"
 	text := "<@U789> get pods"
 
-	ui.processMessage(channel, "", ts, text)
+	ui.processMessage(channel, "", ts, text, "U789")
 
 	select {
 	case untypedMsg := <-inputCh:

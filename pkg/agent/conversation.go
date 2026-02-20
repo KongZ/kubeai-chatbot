@@ -320,6 +320,9 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 	if c.Recorder != nil {
 		ctx = journal.ContextWithRecorder(ctx, c.Recorder)
 	}
+	if c.Session != nil && c.Session.SlackUserID != "" {
+		ctx = journal.ContextWithSlackUserID(ctx, c.Session.SlackUserID)
+	}
 
 	// Save unexpected error and return it in for RunOnce mode
 	log.Info("Starting agent loop", "initialQuery", initialQuery, "runOnce", c.RunOnce)
