@@ -155,8 +155,14 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 		AutomaticModifyResources: true,
 		Session: &api.Session{
 			ID:               "test-session",
-			ChatMessageStore: store,
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
 			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
 		},
 	}
 
@@ -233,8 +239,9 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 	defer cancel()
 
 	store := sessions.NewInMemoryChatStore()
-	_ = store.AddChatMessage(&api.Message{ID: "u1", Source: api.MessageSourceUser, Type: api.MessageTypeText, Payload: "hi"})
-	_ = store.AddChatMessage(&api.Message{ID: "a1", Source: api.MessageSourceAgent, Type: api.MessageTypeText, Payload: "hello"})
+	now := time.Now()
+	_ = store.AddChatMessage(&api.Message{ID: "u1", Source: api.MessageSourceUser, Type: api.MessageTypeText, Payload: "hi", Timestamp: now})
+	_ = store.AddChatMessage(&api.Message{ID: "a1", Source: api.MessageSourceAgent, Type: api.MessageTypeText, Payload: "hello", Timestamp: now})
 
 	client := mocks.NewMockClient(ctrl)
 	chat := mocks.NewMockChat(ctrl)
@@ -253,8 +260,14 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 		Tools:            toolset,
 		Session: &api.Session{
 			ID:               "test-session",
-			ChatMessageStore: store,
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
 			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
 		},
 	}
 
@@ -362,8 +375,14 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 		AutomaticModifyResources: false, // EXPLICITLY DISABLED
 		Session: &api.Session{
 			ID:               "test-session",
-			ChatMessageStore: store,
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
 			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
 		},
 	}
 

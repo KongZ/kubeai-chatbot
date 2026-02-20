@@ -849,6 +849,9 @@ func (c *Agent) NewSession() (string, error) {
 		ModelID:    c.Model,
 		ProviderID: c.Provider,
 	}
+	if c.Session != nil {
+		metadata.SlackUserID = c.Session.SlackUserID
+	}
 
 	newSession, err := manager.NewSession(metadata)
 	if err != nil {
@@ -924,6 +927,7 @@ func (c *Agent) SaveSession() (string, error) {
 		LastAccessed: time.Now(),
 		ModelID:      c.Model,
 		ProviderID:   c.Provider,
+		SlackUserID:  c.Session.SlackUserID,
 	}
 
 	newSession, err := manager.NewSession(metadata)

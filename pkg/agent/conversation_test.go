@@ -65,29 +65,33 @@ func TestHandleMetaQuery(t *testing.T) {
 
 				const modelText = "The current namespace is test-namespace."
 
+				now := time.Now()
 				// user message
 				_ = store.AddChatMessage(&api.Message{
-					ID:      "u1",
-					Source:  api.MessageSourceUser,
-					Type:    api.MessageTypeText,
-					Payload: "What's my current namespace?",
+					ID:        "u1",
+					Source:    api.MessageSourceUser,
+					Type:      api.MessageTypeText,
+					Payload:   "What's my current namespace?",
+					Timestamp: now,
 				})
 
 				// model response
 				_ = store.AddChatMessage(&api.Message{
-					ID:      "a1",
-					Source:  api.MessageSourceAgent,
-					Type:    api.MessageTypeText,
-					Payload: modelText,
+					ID:        "a1",
+					Source:    api.MessageSourceAgent,
+					Type:      api.MessageTypeText,
+					Payload:   modelText,
+					Timestamp: now,
 				})
 
 				// tool call result
 				if out, err := mt.Run(ctx, map[string]any{}); err == nil {
 					_ = store.AddChatMessage(&api.Message{
-						ID:      "t1",
-						Source:  api.MessageSourceAgent,
-						Type:    api.MessageTypeText,
-						Payload: out,
+						ID:        "t1",
+						Source:    api.MessageSourceAgent,
+						Type:      api.MessageTypeText,
+						Payload:   out,
+						Timestamp: now,
 					})
 				} else {
 					t.Fatalf("mock tool run failed: %v", err)
@@ -98,7 +102,17 @@ func TestHandleMetaQuery(t *testing.T) {
 				}
 
 				a := &Agent{llmChat: chat}
-				a.Session = &api.Session{ChatMessageStore: store}
+				a.Session = &api.Session{
+					ID:               "test-session",
+					Name:             "Test Session",
+					ProviderID:       "p",
+					ModelID:          "m",
+					SlackUserID:      "U123",
+					AgentState:       api.AgentStateIdle,
+					CreatedAt:        now,
+					LastModified:     now,
+					ChatMessageStore: store,
+				}
 
 				return a
 			},
@@ -114,7 +128,16 @@ func TestHandleMetaQuery(t *testing.T) {
 			expect: "It has been a pleasure assisting you. Have a great day!",
 			expectations: func(t *testing.T) *Agent {
 				a := &Agent{}
-				a.Session = &api.Session{}
+				a.Session = &api.Session{
+					ID:           "exit-session",
+					Name:         "Exit Session",
+					ProviderID:   "p",
+					ModelID:      "m",
+					SlackUserID:  "U123",
+					AgentState:   api.AgentStateIdle,
+					CreatedAt:    time.Now(),
+					LastModified: time.Now(),
+				}
 				return a
 			},
 			verify: func(t *testing.T, a *Agent, _ string) {
@@ -129,7 +152,16 @@ func TestHandleMetaQuery(t *testing.T) {
 			expect: "Current model is `test-model`",
 			expectations: func(t *testing.T) *Agent {
 				a := &Agent{Model: "test-model"}
-				a.Session = &api.Session{}
+				a.Session = &api.Session{
+					ID:           "model-session",
+					Name:         "Model Session",
+					ProviderID:   "p",
+					ModelID:      "m",
+					SlackUserID:  "U123",
+					AgentState:   api.AgentStateIdle,
+					CreatedAt:    time.Now(),
+					LastModified: time.Now(),
+				}
 				return a
 			},
 		},
@@ -144,7 +176,16 @@ func TestHandleMetaQuery(t *testing.T) {
 				llm.EXPECT().ListModels(ctx).Return([]string{"a", "b"}, nil)
 
 				a := &Agent{LLM: llm}
-				a.Session = &api.Session{}
+				a.Session = &api.Session{
+					ID:           "models-session",
+					Name:         "Models Session",
+					ProviderID:   "p",
+					ModelID:      "m",
+					SlackUserID:  "U123",
+					AgentState:   api.AgentStateIdle,
+					CreatedAt:    time.Now(),
+					LastModified: time.Now(),
+				}
 				return a
 			},
 		},
@@ -167,7 +208,16 @@ func TestHandleMetaQuery(t *testing.T) {
 
 				a.Tools.Init()
 				a.Tools.RegisterTool(mt)
-				a.Session = &api.Session{}
+				a.Session = &api.Session{
+					ID:           "tools-session",
+					Name:         "Tools Session",
+					ProviderID:   "p",
+					ModelID:      "m",
+					SlackUserID:  "U123",
+					AgentState:   api.AgentStateIdle,
+					CreatedAt:    time.Now(),
+					LastModified: time.Now(),
+				}
 				return a
 			},
 			verify: func(t *testing.T, _ *Agent, answer string) {
@@ -188,7 +238,7 @@ func TestHandleMetaQuery(t *testing.T) {
 				if err != nil {
 					t.Fatalf("creating session manager: %v", err)
 				}
-				sess, err := manager.NewSession(sessions.Metadata{ProviderID: "p", ModelID: "m"})
+				sess, err := manager.NewSession(sessions.Metadata{ProviderID: "p", ModelID: "m", SlackUserID: "U123"})
 				if err != nil {
 					t.Fatalf("creating session: %v", err)
 				}
@@ -214,15 +264,25 @@ func TestHandleMetaQuery(t *testing.T) {
 				if err != nil {
 					t.Fatalf("creating session manager: %v", err)
 				}
-				if _, err := manager.NewSession(sessions.Metadata{ProviderID: "p1", ModelID: "m1"}); err != nil {
+				if _, err := manager.NewSession(sessions.Metadata{ProviderID: "p1", ModelID: "m1", SlackUserID: "U123"}); err != nil {
 					t.Fatalf("creating session: %v", err)
 				}
-				if _, err := manager.NewSession(sessions.Metadata{ProviderID: "p2", ModelID: "m2"}); err != nil {
+				if _, err := manager.NewSession(sessions.Metadata{ProviderID: "p2", ModelID: "m2", SlackUserID: "U123"}); err != nil {
 					t.Fatalf("creating session: %v", err)
 				}
 
 				a := &Agent{SessionBackend: "memory"}
-				a.Session = &api.Session{ChatMessageStore: sessions.NewInMemoryChatStore()}
+				a.Session = &api.Session{
+					ID:               "sessions-list",
+					Name:             "Sessions List",
+					ProviderID:       "p",
+					ModelID:          "m",
+					SlackUserID:      "U123",
+					AgentState:       api.AgentStateIdle,
+					CreatedAt:        time.Now(),
+					LastModified:     time.Now(),
+					ChatMessageStore: sessions.NewInMemoryChatStore(),
+				}
 				return a
 			},
 			verify: func(t *testing.T, _ *Agent, answer string) {
@@ -261,7 +321,7 @@ func TestAgent_NewSession(t *testing.T) {
 	}
 
 	// Create initial session
-	sess1, err := manager.NewSession(sessions.Metadata{})
+	sess1, err := manager.NewSession(sessions.Metadata{ProviderID: "p", ModelID: "m", SlackUserID: "U123"})
 	if err != nil {
 		t.Fatalf("creating session 1: %v", err)
 	}
@@ -277,6 +337,8 @@ func TestAgent_NewSession(t *testing.T) {
 	a := &Agent{
 		SessionBackend: "memory",
 		LLM:            mockClient,
+		Model:          "m",
+		Provider:       "p",
 	}
 	a.Tools.Init()
 	a.Session = sess1
@@ -304,7 +366,7 @@ func TestAgent_LoadSession_ResetsState(t *testing.T) {
 	}
 
 	// Create a session in "running" state
-	sess1, err := manager.NewSession(sessions.Metadata{})
+	sess1, err := manager.NewSession(sessions.Metadata{ProviderID: "p", ModelID: "m", SlackUserID: "U123"})
 	if err != nil {
 		t.Fatalf("creating session 1: %v", err)
 	}
@@ -316,6 +378,8 @@ func TestAgent_LoadSession_ResetsState(t *testing.T) {
 	a := &Agent{
 		SessionBackend: "memory",
 	}
+	a.Model = "m"
+	a.Provider = "p"
 
 	// Load the session
 	if err := a.LoadSession(sess1.ID); err != nil {
@@ -345,7 +409,13 @@ func TestAgent_Init_CreatesSessionInStore(t *testing.T) {
 	// Setup
 	session := &api.Session{
 		ID:               "test-session",
+		Name:             "Test Session",
+		ProviderID:       "p",
+		ModelID:          "m",
+		SlackUserID:      "U123",
 		AgentState:       api.AgentStateIdle,
+		CreatedAt:        time.Now(),
+		LastModified:     time.Now(),
 		ChatMessageStore: sessions.NewInMemoryChatStore(),
 	}
 
@@ -386,7 +456,13 @@ func TestAgent_NewSession_NoDeadlock(t *testing.T) {
 	// Setup
 	session := &api.Session{
 		ID:               "initial-session",
+		Name:             "Initial Session",
+		ProviderID:       "p",
+		ModelID:          "m",
+		SlackUserID:      "U123",
 		AgentState:       api.AgentStateIdle,
+		CreatedAt:        time.Now(),
+		LastModified:     time.Now(),
 		ChatMessageStore: sessions.NewInMemoryChatStore(),
 	}
 
@@ -396,6 +472,8 @@ func TestAgent_NewSession_NoDeadlock(t *testing.T) {
 		Output:         make(chan any),
 		LLM:            mockClient,
 		Session:        session,
+		Model:          "m",
+		Provider:       "p",
 	}
 	a.Tools.Init()
 
