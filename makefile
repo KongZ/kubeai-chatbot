@@ -58,11 +58,11 @@ build-debug: build ## Build a binary with remote debugging capabilities
 docker: ## Build a kubeai-chatbot Docker image
 	@echo "Building architecture ${BUILD_ARCH}"
 	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
-		--platform $(BUILD_ARCH) \
-		--build-arg=VERSION=$(VERSION) \
-		--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
-		--build-arg=BUILD_DATE=$(BUILD_DATE) \
-		-f Dockerfile .
+	--platform $(BUILD_ARCH) \
+	--build-arg=VERSION=$(VERSION) \
+	--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
+	--build-arg=BUILD_DATE=$(BUILD_DATE) \
+	-f Dockerfile .
 
 .PHONY: docker-multi-push
 docker-multi-push: BUILD_ARCH := $(strip $(BUILD_ARCH)),linux/arm64
@@ -70,11 +70,11 @@ docker-multi-push: ## Build a kubeai-chatbot Docker image in multi-architect and
 	@nerdctl login ghcr.io -u $(GH_NAME) -p $(CR_PAT)
 	@echo "Building architecture GKE ${BUILD_ARCH}"
 	nerdctl build -t ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG} \
-		--platform=$(BUILD_ARCH) \
-		--build-arg=VERSION=$(VERSION) \
-		--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
-		--build-arg=BUILD_DATE=$(BUILD_DATE) \
-		-f Dockerfile .
+	--platform=$(BUILD_ARCH) \
+	--build-arg=VERSION=$(VERSION) \
+	--build-arg=COMMIT_HASH=$(COMMIT_HASH) \
+	--build-arg=BUILD_DATE=$(BUILD_DATE) \
+	-f Dockerfile .
 	nerdctl push --all-platforms ${SLACK_KUBEAI_DOCKER_IMAGE}:${DOCKER_TAG}
 
 release-%: ## Release a new version

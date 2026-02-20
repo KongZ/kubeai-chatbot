@@ -1,7 +1,7 @@
 root = true
 
 [*]
-indent_style = space
+indent_style = tab
 indent_size = 2
 end_of_line = lf
 charset = utf-8
@@ -11,6 +11,9 @@ insert_final_newline = true
 [*.go]
 indent_style = tab
 indent_size = 2
+
+[makefile]
+indent_style = tab
 
 [*.md]
 indent_size = 2

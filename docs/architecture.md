@@ -38,7 +38,7 @@ graph TB
   Mgr <--> Agent
   Agent <--> Tools
   Agent <--> Store
-  
+
   UI -- "Events/Messages" --> Slack
   Agent <--> LLM
   Tools <--> K8s
@@ -86,7 +86,7 @@ sequenceDiagram
   U->>S: @KubeAI Get my pods
   S->>UI: POST /slack/events
   UI-->>S: 200 OK (Immediate Ack)
-  
+
   rect rgb(240, 240, 240)
   Note over UI,Ag: Background Processing
   UI->>Ag: Process Query
