@@ -191,7 +191,7 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 
 	// Expect tool invocation messages and final response.
 	sawToolReq, sawToolResp, sawFinal := false, false, false
-	for !(sawToolReq && sawToolResp && sawFinal) {
+	for !sawToolReq || !sawToolResp || !sawFinal {
 		select {
 		case v := <-a.Output:
 			m, ok := v.(*api.Message)
@@ -233,8 +233,8 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 	defer cancel()
 
 	store := sessions.NewInMemoryChatStore()
-	store.AddChatMessage(&api.Message{ID: "u1", Source: api.MessageSourceUser, Type: api.MessageTypeText, Payload: "hi"})
-	store.AddChatMessage(&api.Message{ID: "a1", Source: api.MessageSourceAgent, Type: api.MessageTypeText, Payload: "hello"})
+	_ = store.AddChatMessage(&api.Message{ID: "u1", Source: api.MessageSourceUser, Type: api.MessageTypeText, Payload: "hi"})
+	_ = store.AddChatMessage(&api.Message{ID: "a1", Source: api.MessageSourceAgent, Type: api.MessageTypeText, Payload: "hello"})
 
 	client := mocks.NewMockClient(ctrl)
 	chat := mocks.NewMockChat(ctrl)
@@ -279,7 +279,7 @@ func TestAgentEndToEndMetaClear(t *testing.T) {
 	a.Input <- &api.UserInputResponse{Query: "clear"}
 
 	sawClear, sawPrompt := false, false
-	for !(sawClear && sawPrompt) {
+	for !sawClear || !sawPrompt {
 		select {
 		case v := <-a.Output:
 			m, ok := v.(*api.Message)

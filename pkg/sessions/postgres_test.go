@@ -32,7 +32,7 @@ func TestPostgresStore_CreateSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	bundb := bun.NewDB(db, pgdialect.New())
 	store := &PostgresStore{db: bundb}
@@ -63,7 +63,7 @@ func TestPostgresStore_GetSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	bundb := bun.NewDB(db, pgdialect.New())
 	store := &PostgresStore{db: bundb}
@@ -90,7 +90,7 @@ func TestPostgresChatMessageStore_AddChatMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	bundb := bun.NewDB(db, pgdialect.New())
 	sessionID := "test-session"

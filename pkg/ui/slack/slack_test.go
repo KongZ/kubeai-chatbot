@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -447,7 +446,7 @@ func TestHealthz(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -995,8 +994,8 @@ func TestHandleSlackEvents_Validation(t *testing.T) {
 // TestSlackUI_NewSlackUI_Errors verifies that the SlackUI constructor handles
 // missing environment variables correctly by returning an error.
 func TestSlackUI_NewSlackUI_Errors(t *testing.T) {
-	os.Unsetenv("SLACK_BOT_TOKEN")
-	os.Unsetenv("SLACK_SIGNING_SECRET")
+	t.Setenv("SLACK_BOT_TOKEN", "")
+	t.Setenv("SLACK_SIGNING_SECRET", "")
 
 	am := &mockAgentManager{}
 	sm, _ := sessions.NewSessionManager("memory")
@@ -1011,10 +1010,8 @@ func TestSlackUI_NewSlackUI_Errors(t *testing.T) {
 
 // TestSlackUI_NewSlackUI success case
 func TestSlackUI_NewSlackUI_Success(t *testing.T) {
-	os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
-	os.Setenv("SLACK_SIGNING_SECRET", "test-secret")
-	defer os.Unsetenv("SLACK_BOT_TOKEN")
-	defer os.Unsetenv("SLACK_SIGNING_SECRET")
+	t.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
+	t.Setenv("SLACK_SIGNING_SECRET", "test-secret")
 
 	am := &mockAgentManager{
 		SetAgentCreatedCallbackFunc: func(f func(*agent.Agent)) {},

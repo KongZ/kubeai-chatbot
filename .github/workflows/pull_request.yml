@@ -27,6 +27,7 @@ jobs:
           VALIDATE_YAML_PRETTIER: false
           VALIDATE_MARKDOWN_PRETTIER: false
           VALIDATE_GO_RELEASER: false
+          VALIDATE_EDITORCONFIG: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: .github/linters
           FILTER_REGEX_EXCLUDE: ".*(demo|gollm)/.*|pkg/agent/.*"

@@ -1,9 +1,9 @@
 {
   "ignore": [
-    "../../pkg/agent/**",
-    "../../gollm/**",
-    "../../demo/**",
-    "../../vendor/**"
+    "**/pkg/agent/**",
+    "**/gollm/**",
+    "**/demo/**",
+    "**/vendor/**"
   ],
   "threshold": 0.1,
   "reporters": [

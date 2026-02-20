@@ -97,7 +97,11 @@ func run(ctx context.Context) error {
 
 	// Initialize journal recorder
 	recorder := &journal.LogRecorder{}
-	defer recorder.Close()
+	defer func() {
+		if err := recorder.Close(); err != nil {
+			klog.Errorf("error closing recorder: %v", err)
+		}
+	}()
 
 	// Agent factory
 	agentFactory := func(ctx context.Context) (*agent.Agent, error) {
@@ -126,7 +130,11 @@ func run(ctx context.Context) error {
 	}
 
 	agentManager := agent.NewAgentManager(agentFactory, sessionManager)
-	defer agentManager.Close()
+	defer func() {
+		if err := agentManager.Close(); err != nil {
+			klog.Errorf("error closing agent manager: %v", err)
+		}
+	}()
 
 	var userInterface ui.UI
 	switch ui.Type(uiType) {

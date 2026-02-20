@@ -429,7 +429,7 @@ func TestShellParserBehavior(t *testing.T) {
 						lit := arg.Lit()
 						if lit == "" {
 							var sb strings.Builder
-							syntax.NewPrinter().Print(&sb, arg)
+							_ = syntax.NewPrinter().Print(&sb, arg)
 							lit = strings.Trim(sb.String(), `"'`)
 						}
 						if lit != "" {
@@ -556,7 +556,7 @@ func TestKubectlAlwaysAtPosition0(t *testing.T) {
 					firstArg := call.Args[0].Lit()
 					if firstArg == "" {
 						var sb strings.Builder
-						syntax.NewPrinter().Print(&sb, call.Args[0])
+						_ = syntax.NewPrinter().Print(&sb, call.Args[0])
 						firstArg = strings.Trim(sb.String(), `"'`)
 					}
 

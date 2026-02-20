@@ -17,7 +17,6 @@ package agent
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -182,10 +181,8 @@ func TestHandleMetaQuery(t *testing.T) {
 			query:  "session",
 			expect: "Session ID:",
 			expectations: func(t *testing.T) *Agent {
-				oldHome := os.Getenv("HOME")
-				t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 				home := t.TempDir()
-				os.Setenv("HOME", home)
+				t.Setenv("HOME", home)
 
 				manager, err := sessions.NewSessionManager("memory")
 				if err != nil {
@@ -210,10 +207,8 @@ func TestHandleMetaQuery(t *testing.T) {
 			query:  "sessions",
 			expect: "Available sessions:",
 			expectations: func(t *testing.T) *Agent {
-				oldHome := os.Getenv("HOME")
-				t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 				home := t.TempDir()
-				os.Setenv("HOME", home)
+				t.Setenv("HOME", home)
 
 				manager, err := sessions.NewSessionManager("memory")
 				if err != nil {

@@ -121,7 +121,7 @@ func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, d
 	s.httpServerListener = listener
 	s.httpServer = httpServer
 
-	fmt.Fprintf(os.Stdout, "listening on http://%s\n", endpoint)
+	_, _ = fmt.Fprintf(os.Stdout, "listening on http://%s\n", endpoint)
 	return s, nil
 }
 

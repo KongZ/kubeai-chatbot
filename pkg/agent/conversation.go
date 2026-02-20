@@ -1292,7 +1292,6 @@ func candidateToShimCandidate(iterator gollm.ChatResponseIterator) (gollm.ChatRe
 			yield(nil, fmt.Errorf("parsing ReAct response %q: %w", buffer, err))
 			return
 		}
-		buffer = "" // TODO: any trailing text?
 		yield(&ShimResponse{candidate: parsedReActResp}, nil)
 	}, nil
 }

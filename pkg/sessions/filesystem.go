@@ -220,7 +220,7 @@ func (s *FileChatMessageStore) AddChatMessage(record *api.Message) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.Write(data); err != nil {
 		return err
@@ -268,7 +268,7 @@ func (s *FileChatMessageStore) readMessages() ([]*api.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Check if the file is empty
 	stat, err := f.Stat()
@@ -333,7 +333,7 @@ func (s *FileChatMessageStore) writeMessages(messages []*api.Message) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	for _, msg := range messages {
 		if err := msg.Validate(); err != nil {
