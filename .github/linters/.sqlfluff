@@ -8,7 +8,7 @@ tab_width = 2
 indent_unit = space
 
 [sqlfluff:layout:type:comma]
-comma_style = leading
+line_position = leading
 
 [sqlfluff:rules:capitalisation.keywords]
 capitalisation_policy = upper
