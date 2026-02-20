@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -122,6 +123,9 @@ func (p *PostgresStore) GetSession(id string) (*api.Session, error) {
 }
 
 func (p *PostgresStore) CreateSession(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for creation: %w", err)
+	}
 	model := &sessionModel{
 		ID:           session.ID,
 		Name:         session.Name,
@@ -146,6 +150,9 @@ func (p *PostgresStore) CreateSession(session *api.Session) error {
 }
 
 func (p *PostgresStore) UpdateSession(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for update: %w", err)
+	}
 	model := &sessionModel{
 		ID:           session.ID,
 		Name:         session.Name,
@@ -221,6 +228,9 @@ type PostgresChatMessageStore struct {
 }
 
 func (s *PostgresChatMessageStore) AddChatMessage(record *api.Message) error {
+	if err := record.Validate(); err != nil {
+		return fmt.Errorf("invalid chat message: %w", err)
+	}
 	payload, err := json.Marshal(record.Payload)
 	if err != nil {
 		return err
@@ -252,6 +262,9 @@ func (s *PostgresChatMessageStore) SetChatMessages(newHistory []*api.Message) er
 		}
 
 		for _, record := range newHistory {
+			if err := record.Validate(); err != nil {
+				return fmt.Errorf("invalid chat message in history: %w", err)
+			}
 			payload, err := json.Marshal(record.Payload)
 			if err != nil {
 				return err

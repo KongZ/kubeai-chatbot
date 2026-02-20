@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +43,7 @@ func TestPostgresStore_CreateSession(t *testing.T) {
 		Name:         "Test Session",
 		ProviderID:   "test-provider",
 		ModelID:      "test-model",
+		SlackUserID:  "U123456",
 		AgentState:   api.AgentStateIdle,
 		CreatedAt:    time.Now(),
 		LastModified: time.Now(),
@@ -69,8 +71,8 @@ func TestPostgresStore_GetSession(t *testing.T) {
 	sessionID := "test-session"
 	now := time.Now()
 
-	rows := sqlmock.NewRows([]string{"id", "name", "provider_id", "model_id", "agent_state", "created_at", "last_modified"}).
-		AddRow(sessionID, "Test Session", "test-provider", "test-model", string(api.AgentStateIdle), now, now)
+	rows := sqlmock.NewRows([]string{"id", "name", "provider_id", "model_id", "slack_user_id", "agent_state", "created_at", "last_modified"}).
+		AddRow(sessionID, "Test Session", "test-provider", "test-model", "U123456", string(api.AgentStateIdle), now, now)
 
 	mock.ExpectQuery("SELECT .* FROM .session_models.").
 		WillReturnRows(rows)

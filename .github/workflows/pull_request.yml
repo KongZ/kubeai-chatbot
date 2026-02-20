@@ -28,4 +28,7 @@ jobs:
           VALIDATE_MARKDOWN_PRETTIER: false
           VALIDATE_GO_RELEASER: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FILTER_REGEX_EXCLUDE: ".*(demo)/.*"
+          LINTER_RULES_PATH: .github/linters
+          FILTER_REGEX_EXCLUDE: ".*(demo|gollm)/.*|pkg/agent/.*"
+          JSCPD_CONFIG_FILE: .jscpd.json
+          SQLFLUFF_CONFIG_FILE: .sqlfluff

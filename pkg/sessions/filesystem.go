@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -65,6 +67,9 @@ func (f *filesystemStore) GetSession(id string) (*api.Session, error) {
 }
 
 func (f *filesystemStore) CreateSession(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for creation: %w", err)
+	}
 	sessionPath := filepath.Join(f.basePath, session.ID)
 	if err := os.MkdirAll(sessionPath, 0o755); err != nil {
 		return err
@@ -89,6 +94,9 @@ func (f *filesystemStore) CreateSession(session *api.Session) error {
 }
 
 func (f *filesystemStore) UpdateSession(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for update: %w", err)
+	}
 	sessionPath := filepath.Join(f.basePath, session.ID)
 	metadataPath := filepath.Join(sessionPath, "metadata.yaml")
 
@@ -169,6 +177,9 @@ func (s *FileChatMessageStore) HistoryPath() string {
 
 // AddChatMessage appends a message to the existing history on disk.
 func (s *FileChatMessageStore) AddChatMessage(record *api.Message) error {
+	if err := record.Validate(); err != nil {
+		return fmt.Errorf("invalid chat message: %w", err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -325,6 +336,9 @@ func (s *FileChatMessageStore) writeMessages(messages []*api.Message) error {
 	defer f.Close()
 
 	for _, msg := range messages {
+		if err := msg.Validate(); err != nil {
+			return fmt.Errorf("invalid chat message in history: %w", err)
+		}
 		data, err := json.Marshal(msg)
 		if err != nil {
 			return err

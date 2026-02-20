@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,9 +61,14 @@ func (sm *SessionManager) NewSessionWithID(sessionID string, meta Metadata) (*ap
 		Name:         "Session " + sessionID,
 		ProviderID:   meta.ProviderID,
 		ModelID:      meta.ModelID,
+		SlackUserID:  meta.SlackUserID,
 		AgentState:   api.AgentStateIdle,
 		CreatedAt:    now,
 		LastModified: now,
+	}
+
+	if err := session.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid session: %w", err)
 	}
 
 	if err := sm.store.CreateSession(session); err != nil {
@@ -105,6 +111,9 @@ func (sm *SessionManager) GetLatestSession() (*api.Session, error) {
 }
 
 func (sm *SessionManager) UpdateLastAccessed(session *api.Session) error {
+	if err := session.Validate(); err != nil {
+		return fmt.Errorf("invalid session for update: %w", err)
+	}
 	session.LastModified = time.Now()
 	return sm.store.UpdateSession(session)
 }

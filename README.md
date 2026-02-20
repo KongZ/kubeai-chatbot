@@ -22,12 +22,12 @@ KubeAI Chatbot addresses these pain points by:
 - **Natural Language K8s**: Manage your clusters by simply chatting in Slack.
 - **AI-Powered Command Generation**: Automatically generates and executes `kubectl` commands based on your requests.
 - **Slack Native UI**:
-    - **Built for Slack**: Converts conversations into Slack's built-in style.
-    - **Tool Visibility**: Automatically wraps command descriptions in code blocks for clarity.
-    - **Snippet Support**: Automatically uploads long responses as text snippets to keep channels clean.
+  - **Built for Slack**: Converts conversations into Slack's built-in style.
+  - **Tool Visibility**: Automatically wraps command descriptions in code blocks for clarity.
+  - **Snippet Support**: Automatically uploads long responses as text snippets to keep channels clean.
 - **Enterprise Safety Controls**:
-    - **Zero-Trust Secrets**: Strict, hard-coded blocking of any attempts to retrieve or list Kubernetes secrets.
-    - **Modification Guard**: Prevent accidental resource modifications with the `AUTOMATIC_MODIFY_RESOURCES` safety switch.
+  - **Zero-Trust Secrets**: Strict, hard-coded blocking of any attempts to retrieve or list Kubernetes secrets.
+  - **Modification Guard**: Prevent accidental resource modifications with the `AUTOMATIC_MODIFY_RESOURCES` safety switch.
 - **Multi-Cloud Ready**: Support for GKE (with auth plugin), EKS, and standard clusters.
 
 ## 🚀 Quick Start

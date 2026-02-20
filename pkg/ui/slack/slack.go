@@ -335,6 +335,11 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 				continue
 			}
 
+			if err := apiMsg.Validate(); err != nil {
+				klog.Errorf("Invalid message from agent for session %s: %v", sessionID, err)
+				continue
+			}
+
 			// Remove typing indicator on first message from agent
 			if !indicatorRemoved {
 				s.mu.Lock()
@@ -615,135 +620,68 @@ func (s *SlackUI) normalizeInlineHeaders(text string) string {
 
 		// Check if line starts with markdown header
 		if strings.HasPrefix(trimmed, "###") {
-			// Find where the header text ends (after the header marker and any spaces/emojis)
-			headerStart := strings.Index(line, "###") + 3
-			restOfLine := line[headerStart:]
-
-			// Skip initial spaces
-			restOfLine = strings.TrimLeft(restOfLine, " ")
-
-			// Check if there's text after the header that should be on a new line
-			// Look for patterns like: "### 💡 HeaderTextWithoutSpace" or "### Header TextHere"
-			// We want to split after the first "word" (which might include emojis)
-
-			// Find the first lowercase letter after uppercase/emoji sequence
-			// This indicates where the header ends and content begins
-			headerEnd := -1
-			inHeaderText := false
-
-			for i, r := range restOfLine {
-				// Skip emojis and spaces at the start
-				if i < 10 && (r >= 0x1F300 || r == ' ') {
-					continue
-				}
-
-				// If we see an uppercase letter or start of word, we're in header
-				if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-					inHeaderText = true
-					continue
-				}
-
-				// If we're in header text and see a capital letter followed by lowercase
-				// or see text that looks like start of a sentence, that's where to split
-				if inHeaderText && i > 0 {
-					// Check for patterns like "PodI" -> split before "I"
-					prevRune := rune(restOfLine[i-1])
-					if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
-						// Lowercase followed by uppercase - likely start of new word
-						headerEnd = i
-						break
-					}
-				}
-			}
-
-			if headerEnd > 0 {
-				headerText := strings.TrimSpace(restOfLine[:headerEnd])
-				contentText := strings.TrimSpace(restOfLine[headerEnd:])
-				result = append(result, "### "+headerText)
-				if contentText != "" {
-					result = append(result, contentText)
-				}
-			} else {
-				result = append(result, line)
-			}
+			result = append(result, s.parseMarkdownHeader(line, "###")...)
 		} else if strings.HasPrefix(trimmed, "##") {
-			// Similar logic for ## headers
-			headerStart := strings.Index(line, "##") + 2
-			restOfLine := line[headerStart:]
-			restOfLine = strings.TrimLeft(restOfLine, " ")
-
-			headerEnd := -1
-			inHeaderText := false
-
-			for i, r := range restOfLine {
-				if i < 10 && (r >= 0x1F300 || r == ' ') {
-					continue
-				}
-				if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-					inHeaderText = true
-					continue
-				}
-				if inHeaderText && i > 0 {
-					prevRune := rune(restOfLine[i-1])
-					if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
-						headerEnd = i
-						break
-					}
-				}
-			}
-
-			if headerEnd > 0 {
-				headerText := strings.TrimSpace(restOfLine[:headerEnd])
-				contentText := strings.TrimSpace(restOfLine[headerEnd:])
-				result = append(result, "## "+headerText)
-				if contentText != "" {
-					result = append(result, contentText)
-				}
-			} else {
-				result = append(result, line)
-			}
-		} else if strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, "##") {
-			// Similar logic for # headers
-			headerStart := strings.Index(line, "#") + 1
-			restOfLine := line[headerStart:]
-			restOfLine = strings.TrimLeft(restOfLine, " ")
-
-			headerEnd := -1
-			inHeaderText := false
-
-			for i, r := range restOfLine {
-				if i < 10 && (r >= 0x1F300 || r == ' ') {
-					continue
-				}
-				if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-					inHeaderText = true
-					continue
-				}
-				if inHeaderText && i > 0 {
-					prevRune := rune(restOfLine[i-1])
-					if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
-						headerEnd = i
-						break
-					}
-				}
-			}
-
-			if headerEnd > 0 {
-				headerText := strings.TrimSpace(restOfLine[:headerEnd])
-				contentText := strings.TrimSpace(restOfLine[headerEnd:])
-				result = append(result, "# "+headerText)
-				if contentText != "" {
-					result = append(result, contentText)
-				}
-			} else {
-				result = append(result, line)
-			}
+			result = append(result, s.parseMarkdownHeader(line, "##")...)
+		} else if strings.HasPrefix(trimmed, "#") {
+			result = append(result, s.parseMarkdownHeader(line, "#")...)
 		} else {
 			result = append(result, line)
 		}
 	}
 
 	return strings.Join(result, "\n")
+}
+
+// parseMarkdownHeader splits a header and its subsequent text if they are on the same line.
+func (s *SlackUI) parseMarkdownHeader(line, prefix string) []string {
+	headerStart := strings.Index(line, prefix) + len(prefix)
+	restOfLine := line[headerStart:]
+
+	// Skip initial spaces
+	restOfLine = strings.TrimLeft(restOfLine, " ")
+
+	// Find the first lowercase letter after uppercase/emoji sequence
+	// This indicates where the header ends and content begins
+	headerEnd := -1
+	inHeaderText := false
+
+	for i, r := range restOfLine {
+		// Skip emojis and spaces at the start
+		if i < 10 && (r >= 0x1F300 || r == ' ') {
+			continue
+		}
+
+		// If we see an uppercase letter or start of word, we're in header
+		if !inHeaderText && (r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			inHeaderText = true
+			continue
+		}
+
+		// If we're in header text and see a capital letter followed by lowercase
+		// or see text that looks like start of a sentence, that's where to split
+		if inHeaderText && i > 0 {
+			// Check for patterns like "PodI" -> split before "I"
+			prevRune := rune(restOfLine[i-1])
+			if (prevRune >= 'a' && prevRune <= 'z') && (r >= 'A' && r <= 'Z') {
+				// Lowercase followed by uppercase - likely start of new word
+				headerEnd = i
+				break
+			}
+		}
+	}
+
+	if headerEnd > 0 {
+		headerText := strings.TrimSpace(restOfLine[:headerEnd])
+		contentText := strings.TrimSpace(restOfLine[headerEnd:])
+		res := []string{prefix + " " + headerText}
+		if contentText != "" {
+			res = append(res, contentText)
+		}
+		return res
+	}
+
+	return []string{line}
 }
 
 // normalizeInlineTables converts inline tables (tables without line breaks) to multi-line format

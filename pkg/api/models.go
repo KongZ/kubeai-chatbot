@@ -1,4 +1,5 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 https://github.com/KongZ/kubeai-chatbot
+// Portions Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,21 +18,29 @@ package api
 import (
 	"fmt"
 	"time"
+
+	"github.com/go-playground/validator/v10"
 )
 
+var validate = validator.New()
+
 type Session struct {
-	ID               string
-	Name             string
-	ProviderID       string
-	ModelID          string
-	SlackUserID      string
-	Messages         []*Message
-	AgentState       AgentState
-	CreatedAt        time.Time
-	LastModified     time.Time
-	ChatMessageStore ChatMessageStore
+	ID               string           `validate:"required"`
+	Name             string           `validate:"required,min=3,max=100"`
+	ProviderID       string           `validate:"required"`
+	ModelID          string           `validate:"required"`
+	SlackUserID      string           `validate:"required"`
+	Messages         []*Message       `validate:"dive"`
+	AgentState       AgentState       `validate:"required"`
+	CreatedAt        time.Time        `validate:"required"`
+	LastModified     time.Time        `validate:"required"`
+	ChatMessageStore ChatMessageStore `json:"-" validate:"-"`
 	// MCP status information
-	MCPStatus *MCPStatus
+	MCPStatus *MCPStatus `validate:"omitempty,dive"`
+}
+
+func (s *Session) Validate() error {
+	return validate.Struct(s)
 }
 
 type AgentState string
@@ -59,12 +68,16 @@ const (
 )
 
 type Message struct {
-	ID        string
-	Source    MessageSource
-	Type      MessageType
-	Payload   any
-	Timestamp time.Time
-	Metadata  map[string]string
+	ID        string            `validate:"required"`
+	Source    MessageSource     `validate:"required,oneof=user agent model"`
+	Type      MessageType       `validate:"required"`
+	Payload   any               `validate:"required"`
+	Timestamp time.Time         `validate:"required"`
+	Metadata  map[string]string `validate:"omitempty"`
+}
+
+func (m *Message) Validate() error {
+	return validate.Struct(m)
 }
 
 type MessageSource string

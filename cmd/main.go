@@ -56,6 +56,7 @@ func main() {
 
 	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		cancel()
 		os.Exit(1)
 	}
 }
@@ -64,6 +65,14 @@ func run(ctx context.Context) error {
 	// klog setup
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
+
+	// Set verbosity from LOG_LEVEL env var if present
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		if err := klogFlags.Set("v", logLevel); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to set klog verbosity from LOG_LEVEL=%s: %v\n", logLevel, err)
+		}
+	}
+
 	klog.SetOutput(os.Stdout)
 	defer klog.Flush()
 
@@ -92,7 +101,8 @@ func run(ctx context.Context) error {
 
 	// Agent factory
 	agentFactory := func(ctx context.Context) (*agent.Agent, error) {
-		client, err := gollm.NewClient(ctx, providerID)
+		var client gollm.Client
+		client, err = gollm.NewClient(ctx, providerID)
 		if err != nil {
 			return nil, fmt.Errorf("creating llm client: %w", err)
 		}
