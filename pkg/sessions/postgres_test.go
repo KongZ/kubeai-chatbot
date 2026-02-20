@@ -27,14 +27,18 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 )
 
-func TestPostgresStore_CreateSession(t *testing.T) {
+func newTestDB(t *testing.T) (*bun.DB, sqlmock.Sqlmock) {
+	t.Helper()
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer func() { _ = db.Close() }()
+	t.Cleanup(func() { _ = db.Close() })
+	return bun.NewDB(db, pgdialect.New()), mock
+}
 
-	bundb := bun.NewDB(db, pgdialect.New())
+func TestPostgresStore_CreateSession(t *testing.T) {
+	bundb, mock := newTestDB(t)
 	store := &PostgresStore{db: bundb}
 
 	sessionID := "test-session"
@@ -52,20 +56,14 @@ func TestPostgresStore_CreateSession(t *testing.T) {
 	mock.ExpectExec("INSERT INTO .session_models.").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	err = store.CreateSession(session)
+	err := store.CreateSession(session)
 	require.NoError(t, err)
 	assert.NotNil(t, session.ChatMessageStore)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestPostgresStore_GetSession(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	bundb := bun.NewDB(db, pgdialect.New())
+	bundb, mock := newTestDB(t)
 	store := &PostgresStore{db: bundb}
 
 	sessionID := "test-session"
@@ -86,13 +84,7 @@ func TestPostgresStore_GetSession(t *testing.T) {
 }
 
 func TestPostgresChatMessageStore_AddChatMessage(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	bundb := bun.NewDB(db, pgdialect.New())
+	bundb, mock := newTestDB(t)
 	sessionID := "test-session"
 	chatStore := &PostgresChatMessageStore{
 		db:        bundb,
@@ -111,7 +103,7 @@ func TestPostgresChatMessageStore_AddChatMessage(t *testing.T) {
 	mock.ExpectExec("INSERT INTO .message_models.").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	err = chatStore.AddChatMessage(msg)
+	err := chatStore.AddChatMessage(msg)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

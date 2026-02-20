@@ -66,6 +66,55 @@ type messageModel struct {
 	Metadata  map[string]string `bun:"metadata,type:jsonb"`
 }
 
+// newSessionModel converts an api.Session to a sessionModel for DB operations.
+func newSessionModel(session *api.Session) *sessionModel {
+	return &sessionModel{
+		ID:           session.ID,
+		Name:         session.Name,
+		ProviderID:   session.ProviderID,
+		ModelID:      session.ModelID,
+		SlackUserID:  session.SlackUserID,
+		AgentState:   session.AgentState,
+		CreatedAt:    session.CreatedAt,
+		LastModified: session.LastModified,
+	}
+}
+
+// toSession converts a sessionModel to an api.Session, attaching a PostgresChatMessageStore.
+func (m *sessionModel) toSession(db *bun.DB) *api.Session {
+	return &api.Session{
+		ID:           m.ID,
+		Name:         m.Name,
+		ProviderID:   m.ProviderID,
+		ModelID:      m.ModelID,
+		SlackUserID:  m.SlackUserID,
+		AgentState:   m.AgentState,
+		CreatedAt:    m.CreatedAt,
+		LastModified: m.LastModified,
+		ChatMessageStore: &PostgresChatMessageStore{
+			db:        db,
+			sessionID: m.ID,
+		},
+	}
+}
+
+// newMessageModel converts an api.Message to a messageModel for DB operations.
+func newMessageModel(sessionID string, record *api.Message) (*messageModel, error) {
+	payload, err := json.Marshal(record.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &messageModel{
+		ID:        record.ID,
+		SessionID: sessionID,
+		Source:    record.Source,
+		Type:      record.Type,
+		Payload:   payload,
+		Timestamp: record.Timestamp,
+		Metadata:  record.Metadata,
+	}, nil
+}
+
 func newPostgresStore(db *sql.DB, dialect schema.Dialect) (*PostgresStore, error) {
 	bundb := bun.NewDB(db, dialect)
 
@@ -104,38 +153,14 @@ func (p *PostgresStore) GetSession(id string) (*api.Session, error) {
 		return nil, err
 	}
 
-	chatStore := &PostgresChatMessageStore{
-		db:        p.db,
-		sessionID: id,
-	}
-
-	return &api.Session{
-		ID:               model.ID,
-		Name:             model.Name,
-		ProviderID:       model.ProviderID,
-		ModelID:          model.ModelID,
-		SlackUserID:      model.SlackUserID,
-		AgentState:       model.AgentState,
-		CreatedAt:        model.CreatedAt,
-		LastModified:     model.LastModified,
-		ChatMessageStore: chatStore,
-	}, nil
+	return model.toSession(p.db), nil
 }
 
 func (p *PostgresStore) CreateSession(session *api.Session) error {
 	if err := session.Validate(); err != nil {
 		return fmt.Errorf("invalid session for creation: %w", err)
 	}
-	model := &sessionModel{
-		ID:           session.ID,
-		Name:         session.Name,
-		ProviderID:   session.ProviderID,
-		ModelID:      session.ModelID,
-		SlackUserID:  session.SlackUserID,
-		AgentState:   session.AgentState,
-		CreatedAt:    session.CreatedAt,
-		LastModified: session.LastModified,
-	}
+	model := newSessionModel(session)
 
 	_, err := p.db.NewInsert().Model(model).Exec(context.Background())
 	if err != nil {
@@ -153,16 +178,7 @@ func (p *PostgresStore) UpdateSession(session *api.Session) error {
 	if err := session.Validate(); err != nil {
 		return fmt.Errorf("invalid session for update: %w", err)
 	}
-	model := &sessionModel{
-		ID:           session.ID,
-		Name:         session.Name,
-		ProviderID:   session.ProviderID,
-		ModelID:      session.ModelID,
-		SlackUserID:  session.SlackUserID,
-		AgentState:   session.AgentState,
-		CreatedAt:    session.CreatedAt,
-		LastModified: session.LastModified,
-	}
+	model := newSessionModel(session)
 
 	_, err := p.db.NewUpdate().
 		Model(model).
@@ -185,20 +201,7 @@ func (p *PostgresStore) ListSessions() ([]*api.Session, error) {
 
 	sessions := make([]*api.Session, len(models))
 	for i, model := range models {
-		sessions[i] = &api.Session{
-			ID:           model.ID,
-			Name:         model.Name,
-			ProviderID:   model.ProviderID,
-			ModelID:      model.ModelID,
-			SlackUserID:  model.SlackUserID,
-			AgentState:   model.AgentState,
-			CreatedAt:    model.CreatedAt,
-			LastModified: model.LastModified,
-			ChatMessageStore: &PostgresChatMessageStore{
-				db:        p.db,
-				sessionID: model.ID,
-			},
-		}
+		sessions[i] = model.toSession(p.db)
 	}
 
 	return sessions, nil
@@ -231,19 +234,9 @@ func (s *PostgresChatMessageStore) AddChatMessage(record *api.Message) error {
 	if err := record.Validate(); err != nil {
 		return fmt.Errorf("invalid chat message: %w", err)
 	}
-	payload, err := json.Marshal(record.Payload)
+	model, err := newMessageModel(s.sessionID, record)
 	if err != nil {
 		return err
-	}
-
-	model := &messageModel{
-		ID:        record.ID,
-		SessionID: s.sessionID,
-		Source:    record.Source,
-		Type:      record.Type,
-		Payload:   payload,
-		Timestamp: record.Timestamp,
-		Metadata:  record.Metadata,
 	}
 
 	_, err = s.db.NewInsert().Model(model).Exec(context.Background())
@@ -265,19 +258,9 @@ func (s *PostgresChatMessageStore) SetChatMessages(newHistory []*api.Message) er
 			if err := record.Validate(); err != nil {
 				return fmt.Errorf("invalid chat message in history: %w", err)
 			}
-			payload, err := json.Marshal(record.Payload)
+			model, err := newMessageModel(s.sessionID, record)
 			if err != nil {
 				return err
-			}
-
-			model := &messageModel{
-				ID:        record.ID,
-				SessionID: s.sessionID,
-				Source:    record.Source,
-				Type:      record.Type,
-				Payload:   payload,
-				Timestamp: record.Timestamp,
-				Metadata:  record.Metadata,
 			}
 
 			_, err = tx.NewInsert().Model(model).Exec(ctx)

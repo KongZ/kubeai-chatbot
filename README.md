@@ -11,6 +11,7 @@ A powerful Slack chatbot for Kubernetes cluster management, powered by AI. It al
 In many organizations, DevOps teams often become a bottleneck for developers who need to understand why their services aren't deploying correctly or why pods are crashing. Even when engineering teams have cluster access, the steep learning curve of Kubernetes can be daunting.
 
 KubeAI Chatbot addresses these pain points by:
+
   - **Empowering Developers**: Acting as an "on-demand DevOps partner" in Slack, helping teams troubleshoot and learn Kubernetes in real-time.
   - **Reducing DevOps Fatigue**: Handling routine status checks and diagnostic questions, allowing DevOps engineers to focus on higher-value infrastructure work.
   - **Bridging the Knowledge Gap**: Translating complex Kubernetes states into understandable natural language and actionable insights.
@@ -44,6 +45,7 @@ helm install kubeai-chatbot ./charts/kubeai-chartbot \
 ```
 
 ### 2. Slack App Configuration
+
 The easiest way to set up your Slack app is using the provided manifest:
 
   1. Go to [api.slack.com/apps](https://api.slack.com/apps).

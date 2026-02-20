@@ -3,7 +3,8 @@
     "**/pkg/agent/**",
     "**/gollm/**",
     "**/demo/**",
-    "**/vendor/**"
+    "**/vendor/**",
+    "**/*_test.go"
   ],
   "threshold": 0.1,
   "reporters": [

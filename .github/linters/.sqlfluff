@@ -2,13 +2,14 @@
 dialect = postgres
 templater = jinja
 max_line_length = 120
+exclude_rules = references.keywords
 
 [sqlfluff:indentation]
-tab_width = 2
+tab_space_size = 2
 indent_unit = space
 
 [sqlfluff:layout:type:comma]
-line_position = leading
+line_position = trailing
 
 [sqlfluff:rules:capitalisation.keywords]
 capitalisation_policy = upper
@@ -18,3 +19,4 @@ capitalisation_policy = lower
 
 [sqlfluff:rules:capitalisation.functions]
 capitalisation_policy = upper
+
