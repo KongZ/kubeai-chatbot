@@ -13,7 +13,7 @@ To enable OIDC, set the following environment variables:
 | `OIDC_CLIENT_ID`     | OAuth2 Client ID                              | `kubeai-chatbot-id`                      |
 | `OIDC_CLIENT_SECRET` | OAuth2 Client Secret                          | `your-secret`                            |
 | `OIDC_REDIRECT_URL`  | The callback URL registered in your IdP       | `https://your-chatbot.com/auth/callback` |
-| `OIDC_ROLE_FIELD`    | JWT claim to map to K8s role (string or list) | `groups`                                 |
+| `OIDC_GROUPS_FIELD`  | JWT claim that contains user groups           | `groups`                                 |
 | `OIDC_ROLE_MAPPINGS` | Map of IdP roles to K8s cluster roles         | `admin:cluster-admin,dev:edit`           |
 
 ## Setup with AWS SSO (IAM Identity Center)
@@ -21,7 +21,7 @@ To enable OIDC, set the following environment variables:
 1. In AWS IAM Identity Center, create a new **Custom SAML 2.0 application** (Recommended for SAML) or use an OIDC provider proxy if OIDC is strictly required.
 2. **Redirect URL**: Ensure the Redirect URL in your Slack App and IdP is set to `https://<your-domain>/auth/callback`.
 3. **Scopes**: KubeAI requests `openid`, `profile`, and `email` scopes.
-4. **Role Mapping**: Configure the `OIDC_ROLE_FIELD` to point to the claim containing your groups or roles.
+4. **Role Mapping**: Configure the `OIDC_GROUPS_FIELD` to point to the claim containing your groups or roles.
 
 ### Group Mapping Example (AWS SSO)
 

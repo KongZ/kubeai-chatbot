@@ -2,13 +2,21 @@ package tools
 
 import (
 	"context"
+	"os/exec"
 	"testing"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/stretchr/testify/assert"
 )
 
+func skipIfNoKubectl(t *testing.T) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubectl binary not found in PATH, skipping test")
+	}
+}
+
 func TestKubectlRun_Impersonation(t *testing.T) {
+	skipIfNoKubectl(t)
 	tool := NewKubectlTool()
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, KubeconfigKey, "/tmp/kubeconfig")
@@ -41,6 +49,7 @@ func TestKubectlRun_Impersonation(t *testing.T) {
 }
 
 func TestKubectlRun_InjectionPrevention(t *testing.T) {
+	skipIfNoKubectl(t)
 	tool := NewKubectlTool()
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, KubeconfigKey, "/tmp/kubeconfig")

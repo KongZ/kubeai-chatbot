@@ -17,6 +17,7 @@ package auth
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,14 +33,17 @@ func TestOIDCAuthFlow(t *testing.T) {
 	}
 	o := &OIDCSP{
 		Config: config,
-		states: make(map[string]string),
+		states: make(map[string]oidcState),
 	}
 
 	// Test GetSessionID mapping
 	state := "test-state"
 	sessionID := "test-session"
 	o.mu.Lock()
-	o.states[state] = sessionID
+	o.states[state] = oidcState{
+		sessionID: sessionID,
+		createdAt: time.Now(),
+	}
 	o.mu.Unlock()
 
 	r, _ := http.NewRequest("GET", "/auth/callback?code=foo&state="+state, nil)
@@ -50,6 +54,20 @@ func TestOIDCAuthFlow(t *testing.T) {
 	// Verify state is removed after retrieval
 	_, err = o.GetSessionID(r)
 	assert.Error(t, err)
+
+	// Test expired state
+	stateExp := "expired-state"
+	o.mu.Lock()
+	o.states[stateExp] = oidcState{
+		sessionID: sessionID,
+		createdAt: time.Now().Add(-20 * time.Minute),
+	}
+	o.mu.Unlock()
+
+	rExp, _ := http.NewRequest("GET", "/auth/callback?code=foo&state="+stateExp, nil)
+	_, err = o.GetSessionID(rExp)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "OIDC state expired")
 
 	// Test mapping logic
 	claims := map[string]any{

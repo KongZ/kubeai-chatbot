@@ -14,7 +14,6 @@ To enable SAML, set the following environment variables:
 | `SAML_ROOT_URL`         | The base URL of your chatbot                | `https://your-chatbot.com`               |
 | `SAML_KEY_FILE`         | Path to the SP private key                  | `/etc/saml/key.pem`                      |
 | `SAML_CERT_FILE`        | Path to the SP public certificate           | `/etc/saml/cert.pem`                     |
-| `SAML_ROLE_FIELD`       | SAML attribute to map to K8s role           | `roles`                                  |
 | `SAML_ROLE_MAPPINGS`    | Map of SAML attributes to K8s cluster roles | `admin:cluster-admin,dev:edit`           |
 
 > [!NOTE]
@@ -54,14 +53,22 @@ Update your Helm `values.yaml` to configure authentication and mount the secret:
 ```yaml
 authentication:
   method: "SAML"
-  saml:
-    idpMetadataUrl: "https://idp.example.com/metadata"
-    entityId: "https://your-chatbot.com/saml/metadata"
-    rootUrl: "https://your-chatbot.com"
-    keyFile: "/etc/saml/key.pem"
-    certFile: "/etc/saml/cert.pem"
-    roleField: "roles"
-    roleMappings: "admin:cluster-admin,developer:edit"
+
+env:
+  - name: AUTH_METHOD
+    value: "SAML"
+  - name: SAML_IDP_METADATA_URL
+    value: "https://idp.example.com/metadata"
+  - name: SAML_ENTITY_ID
+    value: "https://your-chatbot.com/saml/metadata"
+  - name: SAML_ROOT_URL
+    value: "https://your-chatbot.com"
+  - name: SAML_KEY_FILE
+    value: "/etc/saml/key.pem"
+  - name: SAML_CERT_FILE
+    value: "/etc/saml/cert.pem"
+  - name: SAML_ROLE_MAPPINGS
+    value: "admin:cluster-admin,developer:edit"
 
 volumes:
   - name: saml-certs

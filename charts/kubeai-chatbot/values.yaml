@@ -184,7 +184,6 @@ env:
   # SAML_ROOT_URL: ""
   # SAML_KEY_FILE: "/etc/saml/key.pem"
   # SAML_CERT_FILE: "/etc/saml/cert.pem"
-  # SAML_ROLE_FIELD: "roles"
   # SAML_ROLE_MAPPINGS: "admin:cluster-admin,developer:edit"
   # SAML_GROUPS_FIELD: "groups"
 
@@ -192,7 +191,6 @@ env:
   # OIDC_CLIENT_ID: ""
   # OIDC_CLIENT_SECRET: "piggy:OIDC_CLIENT_SECRET"
   # OIDC_REDIRECT_URL: ""
-  # OIDC_ROLE_FIELD: "groups"
   # OIDC_ROLE_MAPPINGS: "admin:cluster-admin,dev:edit"
   # OIDC_GROUPS_FIELD: "groups"
 

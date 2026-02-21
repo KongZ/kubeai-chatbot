@@ -156,7 +156,6 @@ func run(ctx context.Context) error {
 				RootURL:        getEnv("SAML_ROOT_URL", ""),
 				KeyFile:        getEnv("SAML_KEY_FILE", ""),
 				CertFile:       getEnv("SAML_CERT_FILE", ""),
-				RoleField:      getEnv("SAML_ROLE_FIELD", ""),
 				GroupsField:    getEnv("SAML_GROUPS_FIELD", ""),
 			}
 			samlConfig.RoleMappings = make(map[string]string)
@@ -165,6 +164,8 @@ func run(ctx context.Context) error {
 					parts := strings.Split(pair, ":")
 					if len(parts) == 2 {
 						samlConfig.RoleMappings[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+					} else {
+						klog.Warningf("Skipping malformed SAML role mapping: %s", pair)
 					}
 				}
 			}
@@ -177,7 +178,6 @@ func run(ctx context.Context) error {
 				ClientID:     getEnv("OIDC_CLIENT_ID", ""),
 				ClientSecret: getEnv("OIDC_CLIENT_SECRET", ""),
 				RedirectURL:  getEnv("OIDC_REDIRECT_URL", ""),
-				RoleField:    getEnv("OIDC_ROLE_FIELD", ""),
 				GroupsField:  getEnv("OIDC_GROUPS_FIELD", ""),
 			}
 			oidcConfig.RoleMappings = make(map[string]string)
@@ -186,6 +186,8 @@ func run(ctx context.Context) error {
 					parts := strings.Split(pair, ":")
 					if len(parts) == 2 {
 						oidcConfig.RoleMappings[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+					} else {
+						klog.Warningf("Skipping malformed OIDC role mapping: %s", pair)
 					}
 				}
 			}
