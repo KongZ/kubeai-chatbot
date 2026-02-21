@@ -19,8 +19,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"sync"
+
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 	"k8s.io/klog/v2"
 )
@@ -34,6 +37,7 @@ type OIDCConfig struct {
 	RedirectURL  string
 	RoleField    string            // Field in ID token or userinfo to map to K8s role
 	RoleMappings map[string]string // OIDC role value -> K8s role name
+	GroupsField  string            // Field in ID token or userinfo to extract groups from
 }
 
 // OIDCSP handles OIDC authentication logic
@@ -41,6 +45,9 @@ type OIDCSP struct {
 	Config   OIDCConfig
 	Provider *oidc.Provider
 	Verifier *oidc.IDTokenVerifier
+
+	mu     sync.Mutex
+	states map[string]string // state -> sessionID
 }
 
 // NewOIDCSP creates a new OIDCSP instance
@@ -60,14 +67,19 @@ func NewOIDCSP(config OIDCConfig) (*OIDCSP, error) {
 		Config:   config,
 		Provider: provider,
 		Verifier: verifier,
+		states:   make(map[string]string),
 	}, nil
 }
 
-// GetLoginURL returns the OIDC authorization URL
-func (o *OIDCSP) GetLoginURL(relayState string) (string, error) {
+// GetLoginURL returns the OIDC authorization URL and state mapping
+func (o *OIDCSP) GetLoginURL(sessionID string) (string, error) {
+	state := uuid.New().String()
+	o.mu.Lock()
+	o.states[state] = sessionID
+	o.mu.Unlock()
+
 	oauthConfig := o.oauth2Config()
-	// Using relayState as oauth2 'state' to carry session ID
-	return oauthConfig.AuthCodeURL(relayState), nil
+	return oauthConfig.AuthCodeURL(state), nil
 }
 
 // GetIdentity extracts and maps the user identity from an OIDC callback
@@ -78,6 +90,21 @@ func (o *OIDCSP) GetIdentity(r *http.Request) (*api.Identity, error) {
 	}
 
 	oauthConfig := o.oauth2Config()
+
+	// Validate state
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		return nil, fmt.Errorf("no OIDC state found in request")
+	}
+
+	o.mu.Lock()
+	_, stateExists := o.states[state]
+	o.mu.Unlock()
+
+	if !stateExists {
+		return nil, fmt.Errorf("invalid or expired OIDC state")
+	}
+
 	token, err := oauthConfig.Exchange(r.Context(), code)
 	if err != nil {
 		return nil, fmt.Errorf("exchanging OIDC code: %w", err)
@@ -135,12 +162,45 @@ func (o *OIDCSP) mapClaimsToIdentity(userID string, claims map[string]any) *api.
 		}
 	}
 
+	// Map groups
+	if o.Config.GroupsField != "" {
+		if groups, ok := claims[o.Config.GroupsField].([]any); ok {
+			for _, g := range groups {
+				if gStr, ok := g.(string); ok {
+					identity.Groups = append(identity.Groups, gStr)
+				}
+			}
+		} else if group, ok := claims[o.Config.GroupsField].(string); ok {
+			identity.Groups = []string{group}
+		}
+	}
+
 	// Metadata
 	for k, v := range claims {
 		identity.Metadata[k] = fmt.Sprintf("%v", v)
 	}
 
 	return identity
+}
+
+// GetSessionID retrieves and removes the session ID mapping for the given OIDC state
+func (o *OIDCSP) GetSessionID(r *http.Request) (string, error) {
+	state := r.FormValue("state")
+	if state == "" {
+		return "", fmt.Errorf("no OIDC state found in request")
+	}
+
+	o.mu.Lock()
+	sessionID, ok := o.states[state]
+	if ok {
+		delete(o.states, state)
+	}
+	o.mu.Unlock()
+
+	if !ok {
+		return "", fmt.Errorf("invalid or expired OIDC state")
+	}
+	return sessionID, nil
 }
 
 // Middleware returns nil for OIDC as it doesn't need persistent route middleware like SAML SP

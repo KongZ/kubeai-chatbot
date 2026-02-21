@@ -95,6 +95,7 @@ sequenceDiagram
   participant S as Slack API
   participant UI as Slack UI
   participant Ag as KubeAI Chatbot
+  participant IdP as External IdP
   participant L as LLM (Gemini)
   participant K as Kubernetes
 
@@ -109,7 +110,10 @@ sequenceDiagram
       Ag->>UI: Auth Challenge
       UI->>S: Post Login Link
       S->>U: Please log in
-      U->>Ag: /auth/callback (External IdP)
+      U->>IdP: Redirect to IdP Login
+      IdP-->>U: Login Page
+      U->>IdP: Submit Credentials
+      IdP->>Ag: /auth/callback with token/code
       Ag->>Ag: Save UserIdentity to Session
   end
 
@@ -149,16 +153,16 @@ A session is an object that encapsulates the state of a conversation between a S
 
 The `pkg/sessions` package provides an abstraction layer for various storage backends:
 
-1.  **Memory (`memory`)**:
-    *   Volatile storage used for development or transient deployments.
-    *   State is lost when the application restarts.
-2.  **Filesystem (`file`)**:
-    *   JSON-based persistence on the local disk.
-    *   Suitable for single-node deployments without external database requirements.
-3.  **PostgreSQL (`postgres`)**:
-    *   Production-ready persistence using a relational database.
-    *   Supports high availability and data durability.
-    *   Automatic schema migrations are handled on startup.
+1. **Memory (`memory`)**:
+  *   Volatile storage used for development or transient deployments.
+  *   State is lost when the application restarts.
+2. **Filesystem (`file`)**:
+  *   JSON-based persistence on the local disk.
+  *   Suitable for single-node deployments without external database requirements.
+3. **PostgreSQL (`postgres`)**:
+  *   Production-ready persistence using a relational database.
+  *   Supports high availability and data durability.
+  *   Automatic schema migrations are handled on startup.
 
 ### Authentication Flow (SAML/OIDC)
 
@@ -167,8 +171,8 @@ The `pkg/sessions` package provides an abstraction layer for various storage bac
 
 When `AUTH_METHOD` is set to `SAML` or `OIDC`:
 
-1.  **Challenge**: Incoming requests from unauthenticated users trigger a Slack message with a one-time login link.
-2.  **Redirection**: The link directs the user to the chatbot's `/saml/login` or OIDC auth endpoint.
-3.  **Authentication**: After successful IdP login, the user is redirected back to `/auth/callback` (OIDC) or `/saml/acs` (SAML).
-4.  **Identity Mapping**: The chatbot extracts attributes (e.g., `roles`, `groups`) and stores an `api.Identity` object in the user's session.
-5.  **Impersonation**: Subsequent tool calls use the stored identity to perform Kubernetes impersonation via `--as` flags.
+1. **Challenge**: Incoming requests from unauthenticated users trigger a Slack message with a one-time login link.
+2. **Redirection**: The link directs the user to the chatbot's `/saml/login` or OIDC auth endpoint.
+3. **Authentication**: After successful IdP login, the user is redirected back to `/auth/callback` (OIDC) or `/saml/acs` (SAML).
+4. **Identity Mapping**: The chatbot extracts attributes (e.g., `roles`, `groups`) and stores an `api.Identity` object in the user's session.
+5. **Impersonation**: Subsequent tool calls use the stored identity to perform Kubernetes impersonation via `--as` flags.

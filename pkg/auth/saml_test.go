@@ -23,8 +23,9 @@ import (
 
 func TestMapUserIdentity(t *testing.T) {
 	config := SAMLConfig{
-		Enabled:   true,
-		RoleField: "groups",
+		Enabled:     true,
+		RoleField:   "groups",
+		GroupsField: "groups",
 		RoleMappings: map[string]string{
 			"admin": "cluster-admin",
 		},
@@ -46,6 +47,7 @@ func TestMapUserIdentity(t *testing.T) {
 	assert.NotNil(t, identity)
 	assert.Equal(t, "user@example.com", identity.UserID)
 	assert.Equal(t, "cluster-admin", identity.Role)
+	assert.Equal(t, []string{"admin", "users"}, identity.Groups)
 	assert.Equal(t, "user@example.com", identity.Metadata["email"])
 	assert.Equal(t, "admin", identity.Metadata["groups"])
 }

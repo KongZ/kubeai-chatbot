@@ -18,10 +18,10 @@ To enable OIDC, set the following environment variables:
 
 ## Setup with AWS SSO (IAM Identity Center)
 
-1.  In AWS IAM Identity Center, create a new **Custom SAML 2.0 application** (Recommended for SAML) or use an OIDC provider proxy if OIDC is strictly required. 
-2.  **Redirect URL**: Ensure the Redirect URL in your Slack App and IdP is set to `https://<your-domain>/auth/callback`.
-3.  **Scopes**: KubeAI requests `openid`, `profile`, and `email` scopes.
-4.  **Role Mapping**: Configure the `OIDC_ROLE_FIELD` to point to the claim containing your groups or roles.
+1. In AWS IAM Identity Center, create a new **Custom SAML 2.0 application** (Recommended for SAML) or use an OIDC provider proxy if OIDC is strictly required. 
+2. **Redirect URL**: Ensure the Redirect URL in your Slack App and IdP is set to `https://<your-domain>/auth/callback`.
+3. **Scopes**: KubeAI requests `openid`, `profile`, and `email` scopes.
+4. **Role Mapping**: Configure the `OIDC_ROLE_FIELD` to point to the claim containing your groups or roles.
 
 ### Group Mapping Example (AWS SSO)
 
@@ -53,8 +53,8 @@ In this example:
 
 In your Slack App settings under **OAuth & Permissions**:
 
-1.  Add `https://<your-domain>/auth/callback` to the **Redirect URLs**.
-2.  Ensure your app manifest includes the `openid`, `email`, and `profile` scopes.
+1. Add `https://<your-domain>/auth/callback` to the **Redirect URLs**.
+2. Ensure your app manifest includes the `openid`, `email`, and `profile` scopes.
 
 A sample Slack app manifest for OIDC is available at [`docs/slack_app_manifest_oidc.yaml`](slack_app_manifest_oidc.yaml).
 
@@ -69,9 +69,9 @@ kind: ClusterRoleBinding
 metadata:
   name: kubeai-impersonator
 subjects:
-- kind: ServiceAccount
-  name: kubeai-chatbot
-  namespace: kubeai
+  - kind: ServiceAccount
+    name: kubeai-chatbot
+    namespace: kubeai
 roleRef:
   kind: ClusterRole
   name: impersonator # A role with "impersonate" verb on "users" and "groups"

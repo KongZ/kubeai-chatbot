@@ -22,15 +22,15 @@ To enable SAML, set the following environment variables:
 
 ## Setup Steps
 
-1.  **Generate Certificates**: Generate a private key and public certificate for the chatbot (Service Provider).
-    ```bash
-    openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=kubeai-chatbot"
-    ```
-2.  **Configure IdP**:
-    *   **Single Sign-On URL (ACS)**: `https://<your-domain>/saml/acs`
-    *   **Audience URI (Entity ID)**: `https://<your-domain>/saml/metadata`
-    *   **Attribute Statements**: Ensure the IdP sends the user's roles or groups in an attribute (e.g., named `roles`).
-3.  **Metadata**: Provide the `SAML_IDP_METADATA_URL` so the chatbot can fetch the IdP's public key and endpoints.
+1. **Generate Certificates**: Generate a private key and public certificate for the chatbot (Service Provider).
+  ```bash
+  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=kubeai-chatbot"
+  ```
+2. **Configure IdP**:
+  * **Single Sign-On URL (ACS)**: `https://<your-domain>/saml/acs`
+  * **Audience URI (Entity ID)**: `https://<your-domain>/saml/metadata`
+  * **Attribute Statements**: Ensure the IdP sends the user's roles or groups in an attribute (e.g., named `roles`).
+3. **Metadata**: Provide the `SAML_IDP_METADATA_URL` so the chatbot can fetch the IdP's public key and endpoints.
 
 ## Kubernetes Deployment
 
@@ -90,9 +90,9 @@ kind: ClusterRoleBinding
 metadata:
   name: kubeai-impersonator
 subjects:
-- kind: ServiceAccount
-  name: kubeai-chatbot
-  namespace: kubeai
+  - kind: ServiceAccount
+    name: kubeai-chatbot
+    namespace: kubeai
 roleRef:
   kind: ClusterRole
   name: impersonator # A role with "impersonate" verb on "users" and "groups"

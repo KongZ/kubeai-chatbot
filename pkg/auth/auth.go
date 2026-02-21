@@ -26,6 +26,8 @@ type Authenticator interface {
 	GetLoginURL(relayState string) (string, error)
 	// GetIdentity extracts and maps the user identity from an authenticated request
 	GetIdentity(r *http.Request) (*api.Identity, error)
+	// GetSessionID retrieves the session ID associated with the authentication request
+	GetSessionID(r *http.Request) (string, error)
 	// Middleware returns an optional HTTP middleware for authentication routes
 	Middleware() http.Handler
 }

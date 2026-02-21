@@ -38,6 +38,7 @@ type SAMLConfig struct {
 	CertFile       string
 	RoleField      string            // Field in SAML assertion to map to K8s role
 	RoleMappings   map[string]string // SAML role value -> K8s role name
+	GroupsField    string            // Field in SAML assertion to extract groups from
 }
 
 // SAMLSP handles SAML Service Provider logic
@@ -133,6 +134,14 @@ func (s *SAMLSP) MapUserIdentity(session samlsp.Session) (*api.Identity, error) 
 		}
 	}
 
+	// Capture groups
+	if s.Config.GroupsField != "" {
+		groups := assertion[s.Config.GroupsField]
+		if len(groups) > 0 {
+			identity.Groups = groups
+		}
+	}
+
 	// Capture all attributes for metadata
 	for k := range assertion {
 		identity.Metadata[k] = assertion.Get(k)
@@ -158,6 +167,15 @@ func (s *SAMLSP) GetIdentity(r *http.Request) (*api.Identity, error) {
 	}
 
 	return s.MapUserIdentity(session)
+}
+
+// GetSessionID retrieves the RelayState which contains the session ID in SAML
+func (s *SAMLSP) GetSessionID(r *http.Request) (string, error) {
+	relayState := r.FormValue("RelayState")
+	if relayState == "" {
+		return "", fmt.Errorf("no RelayState found in SAML request")
+	}
+	return relayState, nil
 }
 
 // Middleware returns the SAML middleware handler

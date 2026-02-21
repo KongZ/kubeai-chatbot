@@ -273,29 +273,32 @@ func (s *SlackUI) handleAuthSuccess(w http.ResponseWriter, r *http.Request) {
 
 	if identity == nil {
 		// Re-trigger login if no identity found
-		loginURL, _ := s.authenticator.GetLoginURL(r.FormValue("state"))
-		if loginURL == "" {
-			loginURL, _ = s.authenticator.GetLoginURL(r.FormValue("RelayState"))
+		state := r.FormValue("state")
+		if state == "" {
+			state = r.FormValue("RelayState")
+		}
+		loginURL, err := s.authenticator.GetLoginURL(state)
+		if err != nil {
+			klog.Errorf("Failed to get login URL: %v", err)
+			http.Error(w, "Failed to generate login URL", http.StatusInternalServerError)
+			return
 		}
 		http.Redirect(w, r, loginURL, http.StatusFound)
 		return
 	}
 
-	// state (OIDC) or RelayState (SAML) contains the session ID
-	sessionID := r.FormValue("state")
-	if sessionID == "" {
-		sessionID = r.FormValue("RelayState")
-	}
-	if sessionID == "" {
-		klog.Warning("SAML login success without RelayState")
-		fmt.Fprintf(w, "Authentication successful! You can return to Slack now.")
+	// Get the session ID via Authenticator
+	sessionID, err := s.authenticator.GetSessionID(r)
+	if err != nil {
+		klog.Errorf("Failed to get session ID after authentication: %v", err)
+		http.Error(w, "Authentication context lost", http.StatusBadRequest)
 		return
 	}
 
 	// Update the session with the identity
 	session, err := s.sessionManager.FindSessionByID(sessionID)
 	if err != nil {
-		klog.Errorf("Failed to find session %s after SAML login: %v", sessionID, err)
+		klog.Errorf("Failed to find session %s after authentication: %v", sessionID, err)
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -306,7 +309,7 @@ func (s *SlackUI) handleAuthSuccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	klog.Infof("Successfully authenticated user %s for session %s", identity.UserID, sessionID)
-	fmt.Fprintf(w, "Authentication successful! You can return to Slack and try your request again.")
+	_, _ = fmt.Fprintf(w, "Authentication successful! You can return to Slack and try your request again.")
 }
 
 func (s *SlackUI) processMessage(channel, threadTS, ts, text, userID string) {
@@ -363,7 +366,12 @@ func (s *SlackUI) processMessage(channel, threadTS, ts, text, userID string) {
 
 	// Check authentication if enabled
 	if s.authenticator != nil && agent.Session.UserIdentity == nil {
-		loginURL, _ := s.authenticator.GetLoginURL(sessionID)
+		loginURL, err := s.authenticator.GetLoginURL(sessionID)
+		if err != nil {
+			klog.Errorf("Failed to get login URL for session %s: %v", sessionID, err)
+			s.postToSlack(channel, effectiveThreadTS, "Authentication required, but failed to generate login URL. Please contact your administrator.", false)
+			return
+		}
 		message := fmt.Sprintf("Please log in to continue: %s", loginURL)
 		s.postToSlack(channel, effectiveThreadTS, message, false)
 		return

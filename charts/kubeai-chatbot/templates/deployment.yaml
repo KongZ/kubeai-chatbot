@@ -43,36 +43,6 @@ spec:
           env:
             - name: AUTH_METHOD
               value: {{ .Values.authentication.method | quote }}
-            {{- if eq .Values.authentication.method "SAML" }}
-            - name: SAML_IDP_METADATA_URL
-              value: {{ .Values.authentication.saml.idpMetadataUrl | quote }}
-            - name: SAML_ENTITY_ID
-              value: {{ .Values.authentication.saml.entityId | quote }}
-            - name: SAML_ROOT_URL
-              value: {{ .Values.authentication.saml.rootUrl | quote }}
-            - name: SAML_KEY_FILE
-              value: {{ .Values.authentication.saml.keyFile | quote }}
-            - name: SAML_CERT_FILE
-              value: {{ .Values.authentication.saml.certFile | quote }}
-            - name: SAML_ROLE_FIELD
-              value: {{ .Values.authentication.saml.roleField | quote }}
-            - name: SAML_ROLE_MAPPINGS
-              value: {{ .Values.authentication.saml.roleMappings | quote }}
-            {{- end }}
-            {{- if eq .Values.authentication.method "OIDC" }}
-            - name: OIDC_ISSUER_URL
-              value: {{ .Values.authentication.oidc.issuerUrl | quote }}
-            - name: OIDC_CLIENT_ID
-              value: {{ .Values.authentication.oidc.clientId | quote }}
-            - name: OIDC_CLIENT_SECRET
-              value: {{ .Values.authentication.oidc.clientSecret | quote }}
-            - name: OIDC_REDIRECT_URL
-              value: {{ .Values.authentication.oidc.redirectUrl | quote }}
-            - name: OIDC_ROLE_FIELD
-              value: {{ .Values.authentication.oidc.roleField | quote }}
-            - name: OIDC_ROLE_MAPPINGS
-              value: {{ .Values.authentication.oidc.roleMappings | quote }}
-            {{- end }}
             {{- range $key, $val := (.Values.env) }}
             - name: {{  $key | quote | upper }}
               value: {{ $val | quote }}

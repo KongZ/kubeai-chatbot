@@ -25,6 +25,7 @@ import (
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
+	"mvdan.cc/sh/v3/shell"
 )
 
 type ExecResult struct {
@@ -92,36 +93,47 @@ func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 		return &ExecResult{Command: command, Error: err.Error()}, nil
 	}
 
+	cmdArgs, err := shell.Fields(command, nil)
+	if err != nil {
+		return &ExecResult{Command: command, Error: fmt.Sprintf("parsing command: %v", err)}, nil
+	}
+	if len(cmdArgs) == 0 {
+		return &ExecResult{Command: command, Error: "empty command"}, nil
+	}
+
 	// Apply impersonation if identity is present
 	if identity, ok := ctx.Value(IdentityKey).(*api.Identity); ok && identity != nil {
 		if identity.Role != "" {
-			command += fmt.Sprintf(" --as=%s", identity.Role)
+			cmdArgs = append(cmdArgs, "--as="+identity.Role)
 		}
 		for _, group := range identity.Groups {
-			command += fmt.Sprintf(" --as-group=%s", group)
+			cmdArgs = append(cmdArgs, "--as-group="+group)
 		}
 	}
+
+	// Reconstruct command for reporting
+	fullCommand := strings.Join(cmdArgs, " ")
 
 	// Prepare environment
 	env := os.Environ()
 	if kubeconfig != "" {
 		kubeconfig, err := ExpandShellVar(kubeconfig)
 		if err != nil {
-			return &ExecResult{Command: command, Error: err.Error()}, nil
+			return &ExecResult{Command: fullCommand, Error: err.Error()}, nil
 		}
 		env = append(env, "KUBECONFIG="+kubeconfig)
 	}
 
-	// Execute command
+	// Execute command directly without shell
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
 	cmd.Env = env
 
 	stdout, err := cmd.Output()
 	duration := time.Since(start)
 
 	result := &ExecResult{
-		Command:  command,
+		Command:  fullCommand,
 		Stdout:   string(stdout),
 		Duration: duration.String(),
 	}

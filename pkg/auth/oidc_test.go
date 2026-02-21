@@ -15,41 +15,54 @@
 package auth
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestOIDCMapUserIdentity(t *testing.T) {
+func TestOIDCAuthFlow(t *testing.T) {
 	config := OIDCConfig{
-		Enabled:   true,
-		RoleField: "groups",
+		Enabled:     true,
+		RoleField:   "groups",
+		GroupsField: "groups",
 		RoleMappings: map[string]string{
 			"admin": "cluster-admin",
 		},
 	}
-	o := &OIDCSP{Config: config}
+	o := &OIDCSP{
+		Config: config,
+		states: make(map[string]string),
+	}
 
-	// Mock claims
+	// Test GetSessionID mapping
+	state := "test-state"
+	sessionID := "test-session"
+	o.mu.Lock()
+	o.states[state] = sessionID
+	o.mu.Unlock()
+
+	r, _ := http.NewRequest("GET", "/auth/callback?code=foo&state="+state, nil)
+	retrievedSessionID, err := o.GetSessionID(r)
+	assert.NoError(t, err)
+	assert.Equal(t, sessionID, retrievedSessionID)
+
+	// Verify state is removed after retrieval
+	_, err = o.GetSessionID(r)
+	assert.Error(t, err)
+
+	// Test mapping logic
 	claims := map[string]any{
 		"sub":    "test-user",
 		"email":  "user@example.com",
 		"groups": []any{"admin", "users"},
 	}
 
-	// Helper to extract userID
-	getUserID := func(c map[string]any) string {
-		if email, ok := c["email"].(string); ok {
-			return email
-		}
-		return c["sub"].(string)
-	}
-
-	identity := o.mapClaimsToIdentity(getUserID(claims), claims)
+	identity := o.mapClaimsToIdentity("user@example.com", claims)
 	assert.NotNil(t, identity)
 	assert.Equal(t, "user@example.com", identity.UserID)
 	assert.Equal(t, "cluster-admin", identity.Role)
-	assert.Equal(t, "user@example.com", identity.Metadata["email"])
+	assert.Equal(t, []string{"admin", "users"}, identity.Groups)
 }
 
 // We need to export mapClaimsToIdentity or test through GetIdentity with a mock server.
