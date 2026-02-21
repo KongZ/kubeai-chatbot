@@ -11,7 +11,7 @@ image:
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.1.1"
+  tag: "0.2.0"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -34,7 +34,7 @@ serviceAccount:
 # RBAC configuration
 rbac:
   # Specifies whether RBAC resources should be created
-  create: false
+  create: true
   # Allow write operations (create, update, patch, delete)
   # Set to false for read-only access
   allowWrite: false
@@ -166,13 +166,37 @@ tolerations: []
 
 affinity: {}
 
+# Authentication Configuration
+authentication:
+  # method: NONE # Options: SAML, OIDC, NONE
+  method: NONE
+  # SAML Configuration
+  saml:
+    idpMetadataUrl: ""
+    entityId: ""
+    rootUrl: ""
+    keyFile: "/etc/saml/key.pem"
+    certFile: "/etc/saml/cert.pem"
+    roleField: "roles"
+    roleMappings: "admin:cluster-admin,developer:edit"
+  # OIDC Configuration
+  oidc:
+    issuerUrl: ""
+    clientId: ""
+    clientSecret: ""
+    redirectUrl: ""
+    roleField: "groups"
+    roleMappings: "admin:cluster-admin,dev:edit"
+
 # Environment variables
 env:
   SLACK_BOT_TOKEN: "replace-with-slack-token"
   SLACK_SIGNING_SECRET: "replace-with-slack-signing-secret"
   GEMINI_API_KEY: ""
-  LOG_LEVEL: "2"
+  LOG_LEVEL: "1"
   # SESSION_TYPE: "postgres"
+
+  ## DB Configuration
   # DB_HOST: ""
   # DB_PORT: "5432"
   # DB_USER: ""

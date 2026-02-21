@@ -77,4 +77,11 @@ rules:
       - cronjobs
     verbs: ["create", "update", "patch", "delete"]
   {{- end }}
+
+  {{- if or (eq .Values.authentication.method "SAML") (eq .Values.authentication.method "OIDC") }}
+  # Impersonation access (required for SAML/OIDC auth and role mapping)
+  - apiGroups: [""]
+    resources: ["users", "groups"]
+    verbs: ["impersonate"]
+  {{- end }}
 {{- end }}

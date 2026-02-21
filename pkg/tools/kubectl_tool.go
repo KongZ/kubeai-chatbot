@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
+	"github.com/KongZ/kubeai-chatbot/pkg/api"
 )
 
 type ExecResult struct {
@@ -89,6 +90,16 @@ func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 	// Check for interactive commands
 	if err := validateKubectlCommand(command); err != nil {
 		return &ExecResult{Command: command, Error: err.Error()}, nil
+	}
+
+	// Apply impersonation if identity is present
+	if identity, ok := ctx.Value(IdentityKey).(*api.Identity); ok && identity != nil {
+		if identity.Role != "" {
+			command += fmt.Sprintf(" --as=%s", identity.Role)
+		}
+		for _, group := range identity.Groups {
+			command += fmt.Sprintf(" --as-group=%s", group)
+		}
 	}
 
 	// Prepare environment

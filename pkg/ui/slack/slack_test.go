@@ -999,7 +999,7 @@ func TestSlackUI_NewSlackUI_Errors(t *testing.T) {
 
 	am := &mockAgentManager{}
 	sm, _ := sessions.NewSessionManager("memory")
-	ui, err := NewSlackUI(am, sm, "model", "provider", "8888", "agent", "msg")
+	ui, err := NewSlackUI(am, sm, "model", "provider", "8888", "agent", "msg", nil)
 	if err == nil {
 		t.Error("expected error due to missing env vars, got nil")
 	}
@@ -1018,7 +1018,7 @@ func TestSlackUI_NewSlackUI_Success(t *testing.T) {
 	}
 	sm, _ := sessions.NewSessionManager("memory")
 
-	ui, err := NewSlackUI(am, sm, "model", "provider", "127.0.0.1:0", "agent", "msg")
+	ui, err := NewSlackUI(am, sm, "model", "provider", "127.0.0.1:0", "agent", "msg", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
