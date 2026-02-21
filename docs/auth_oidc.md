@@ -18,7 +18,7 @@ To enable OIDC, set the following environment variables:
 
 ## Setup with AWS SSO (IAM Identity Center)
 
-1. In AWS IAM Identity Center, create a new **Custom SAML 2.0 application** (Recommended for SAML) or use an OIDC provider proxy if OIDC is strictly required. 
+1. In AWS IAM Identity Center, create a new **Custom SAML 2.0 application** (Recommended for SAML) or use an OIDC provider proxy if OIDC is strictly required.
 2. **Redirect URL**: Ensure the Redirect URL in your Slack App and IdP is set to `https://<your-domain>/auth/callback`.
 3. **Scopes**: KubeAI requests `openid`, `profile`, and `email` scopes.
 4. **Role Mapping**: Configure the `OIDC_ROLE_FIELD` to point to the claim containing your groups or roles.
@@ -40,11 +40,12 @@ authentication:
 
 In this example:
 
-- Users in the **AWS-Admins** group will be impersonated as `cluster-admin`.
-- Users in the **AWS-Developers** group will be impersonated as `edit`.
+  - Users in the **AWS-Admins** group will be impersonated as `cluster-admin`.
+  - Users in the **AWS-Developers** group will be impersonated as `edit`.
 
 > [!NOTE]
 > The Helm chart automatically adds the necessary `impersonate` permissions to the ClusterRole when `authentication.method` is set to `OIDC`.
+
 
 > [!IMPORTANT]
 > **Priority Matching**: If a user belongs to multiple groups that are present in the mapping, the chatbot will use the **first** match it encounters in the user's groups list.
@@ -63,6 +64,7 @@ A sample Slack app manifest for OIDC is available at [`docs/slack_app_manifest_o
 The chatbot uses **Client Impersonation**. Ensure the Service Account running the chatbot has permission to impersonate the roles you map in `OIDC_ROLE_MAPPINGS`.
 
 Example ClusterRoleBinding:
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

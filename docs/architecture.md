@@ -154,15 +154,20 @@ A session is an object that encapsulates the state of a conversation between a S
 The `pkg/sessions` package provides an abstraction layer for various storage backends:
 
 1. **Memory (`memory`)**:
-  *   Volatile storage used for development or transient deployments.
-  *   State is lost when the application restarts.
+
+  * Volatile storage used for development or transient deployments.
+  * State is lost when the application restarts.
+
 2. **Filesystem (`file`)**:
-  *   JSON-based persistence on the local disk.
-  *   Suitable for single-node deployments without external database requirements.
+
+  * JSON-based persistence on the local disk.
+  * Suitable for single-node deployments without external database requirements.
+
 3. **PostgreSQL (`postgres`)**:
-  *   Production-ready persistence using a relational database.
-  *   Supports high availability and data durability.
-  *   Automatic schema migrations are handled on startup.
+
+  * Production-ready persistence using a relational database.
+  * Supports high availability and data durability.
+  * Automatic schema migrations are handled on startup.
 
 ### Authentication Flow (SAML/OIDC)
 

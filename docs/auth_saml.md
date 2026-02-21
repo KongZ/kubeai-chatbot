@@ -27,9 +27,11 @@ To enable SAML, set the following environment variables:
   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=kubeai-chatbot"
   ```
 2. **Configure IdP**:
+
   * **Single Sign-On URL (ACS)**: `https://<your-domain>/saml/acs`
   * **Audience URI (Entity ID)**: `https://<your-domain>/saml/metadata`
   * **Attribute Statements**: Ensure the IdP sends the user's roles or groups in an attribute (e.g., named `roles`).
+
 3. **Metadata**: Provide the `SAML_IDP_METADATA_URL` so the chatbot can fetch the IdP's public key and endpoints.
 
 ## Kubernetes Deployment
@@ -84,6 +86,7 @@ A sample Slack app manifest for SAML is available at [`docs/slack_app_manifest_s
 The chatbot uses **Client Impersonation**. Ensure the Service Account running the chatbot has permission to impersonate the roles you map in `SAML_ROLE_MAPPINGS`.
 
 Example ClusterRoleBinding:
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

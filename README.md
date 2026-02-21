@@ -129,6 +129,7 @@ The easiest way to set up your Slack app is using the provided manifest:
 ## 🔐 Authentication
 
 KubeAI Chatbot supports optional enterprise-grade authentication. When enabled, it provides:
+
   - **Identity-First Access**: Users must authenticate via your IdP (Identity Provider) before using the chatbot.
   - **Kube-Native RBAC**: Sessions are mapped to Kubernetes identities, allowing the bot to perform actions using **client impersonation** (RBAC).
 
