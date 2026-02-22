@@ -3,6 +3,7 @@
     "**/pkg/agent/**",
     "**/gollm/**",
     "**/demo/**",
+    "**/docs/**",
     "**/vendor/**",
     "**/*_test.go"
   ],

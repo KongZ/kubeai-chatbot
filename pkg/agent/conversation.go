@@ -1030,6 +1030,7 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 			Kubeconfig: c.Kubeconfig,
 			WorkDir:    c.workDir,
 			Env:        c.EnvVars,
+			Identity:   c.Session.UserIdentity,
 		})
 
 		if err != nil {

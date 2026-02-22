@@ -64,6 +64,9 @@ The easiest way to set up your Slack app is using the provided manifest:
 | `AUTOMATIC_MODIFY_RESOURCES` | Enable/Disable AI's ability to run write commands | `false`              |
 | `KUBECONFIG`                 | Path to your kubeconfig file                      | `$HOME/.kube/config` |
 | `LISTEN_ADDRESS`             | Address for the bot to listen on                  | `0.0.0.0:8888`       |
+| `AUTH_METHOD`                | Auth method (`SAML`, `OIDC`, or `NONE`)           | `NONE`               |
+| `SESSION_TYPE`               | Session storage (`postgres`, `file`, `memory`)    | `memory`             |
+| `LOG_LEVEL`                  | Verbosity of logs (e.g., `2` for info)            | `1`                  |
 
 ### General LLM Settings
 
@@ -123,6 +126,19 @@ The easiest way to set up your Slack app is using the provided manifest:
 | :-------------- | :------------------------------- | :-------------- |
 | `BEDROCK_MODEL` | Model identifier for AWS Bedrock | Claude Sonnet 4 |
 
+## 🔐 Authentication
+
+KubeAI Chatbot supports optional enterprise-grade authentication. When enabled, it provides:
+
+  - **Identity-First Access**: Users must authenticate via your IdP (Identity Provider) before using the chatbot.
+  - **Kube-Native RBAC**: Sessions are mapped to Kubernetes identities, allowing the bot to perform actions using **client impersonation** (RBAC).
+
+For detailed setup instructions, see:
+
+  - [SAML 2.0 Setup Guide](docs/auth_saml.md)
+  - [OIDC Setup Guide](docs/auth_oidc.md)
+  - [Architecture & Auth Flows](docs/architecture.md#authentication-flow-samloidc)
+
 ## 🛡️ Safety & Security
 
 KubeAI Chatbot is built with safety as a priority:
@@ -134,6 +150,8 @@ KubeAI Chatbot is built with safety as a priority:
 ## 🏗️ Architecture
 
   - [System Architecture](docs/architecture.md)
+  - [SAML Authentication Setup](docs/auth_saml.md)
+  - [OIDC Authentication Setup](docs/auth_oidc.md)
   - [Cross-Cluster Access Setup](docs/cross_cluster_access.md)
 
 ## 📜 Credits & Licensing

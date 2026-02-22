@@ -11,7 +11,7 @@ image:
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.1.1"
+  tag: "0.1.2"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -34,7 +34,7 @@ serviceAccount:
 # RBAC configuration
 rbac:
   # Specifies whether RBAC resources should be created
-  create: false
+  create: true
   # Allow write operations (create, update, patch, delete)
   # Set to false for read-only access
   allowWrite: false
@@ -166,13 +166,37 @@ tolerations: []
 
 affinity: {}
 
+# Authentication Configuration
+authentication:
+  # method: NONE # Options: SAML, OIDC, NONE
+  method: NONE
+
 # Environment variables
 env:
   SLACK_BOT_TOKEN: "replace-with-slack-token"
   SLACK_SIGNING_SECRET: "replace-with-slack-signing-secret"
   GEMINI_API_KEY: ""
-  LOG_LEVEL: "2"
+  LOG_LEVEL: "1"
+
+  ## Authentication Configuration
+  # SAML_IDP_METADATA_URL: ""
+  # SAML_ENTITY_ID: ""
+  # SAML_ROOT_URL: ""
+  # SAML_KEY_FILE: "/etc/saml/key.pem"
+  # SAML_CERT_FILE: "/etc/saml/cert.pem"
+  # SAML_ROLE_MAPPINGS: "admin:cluster-admin,developer:edit"
+  # SAML_GROUPS_FIELD: "groups"
+
+  # OIDC_ISSUER_URL: ""
+  # OIDC_CLIENT_ID: ""
+  # OIDC_CLIENT_SECRET: "piggy:OIDC_CLIENT_SECRET"
+  # OIDC_REDIRECT_URL: ""
+  # OIDC_ROLE_MAPPINGS: "admin:cluster-admin,dev:edit"
+  # OIDC_GROUPS_FIELD: "groups"
+
   # SESSION_TYPE: "postgres"
+
+  ## DB Configuration
   # DB_HOST: ""
   # DB_PORT: "5432"
   # DB_USER: ""

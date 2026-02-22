@@ -37,6 +37,15 @@ type Session struct {
 	ChatMessageStore ChatMessageStore `json:"-" validate:"-"`
 	// MCP status information
 	MCPStatus *MCPStatus `validate:"omitempty,dive"`
+	// UserIdentity contains the authenticated user's identity information
+	UserIdentity *Identity `validate:"omitempty"`
+}
+
+type Identity struct {
+	UserID   string            `json:"user_id" validate:"required"`
+	Role     string            `json:"role" validate:"omitempty"` // Mapped K8s role/user for impersonation
+	Groups   []string          `json:"groups" validate:"omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 func (s *Session) Validate() error {

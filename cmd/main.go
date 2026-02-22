@@ -23,10 +23,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
 	"github.com/KongZ/kubeai-chatbot/pkg/agent"
+	"github.com/KongZ/kubeai-chatbot/pkg/auth"
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
@@ -140,7 +142,68 @@ func run(ctx context.Context) error {
 	switch ui.Type(uiType) {
 	case ui.UITypeSlack:
 		contextMessage := getEnv("SLACK_CONTEXT_MESSAGE", "I am an AI assistant here to help.")
-		userInterface, err = slack.NewSlackUI(agentManager, sessionManager, modelID, providerID, listenAddress, agentName, contextMessage)
+
+		// Authentication configuration
+		authMethod := strings.ToUpper(getEnv("AUTH_METHOD", "NONE"))
+		var authenticator auth.Authenticator
+
+		switch authMethod {
+		case "SAML":
+			samlConfig := auth.SAMLConfig{
+				Enabled:        true,
+				IDPMetadataURL: getEnv("SAML_IDP_METADATA_URL", ""),
+				EntityID:       getEnv("SAML_ENTITY_ID", ""),
+				RootURL:        getEnv("SAML_ROOT_URL", ""),
+				KeyFile:        getEnv("SAML_KEY_FILE", ""),
+				CertFile:       getEnv("SAML_CERT_FILE", ""),
+				GroupsField:    getEnv("SAML_GROUPS_FIELD", ""),
+			}
+			samlConfig.RoleMappings = make(map[string]string)
+			if mappingStr := getEnv("SAML_ROLE_MAPPINGS", ""); mappingStr != "" {
+				for _, pair := range strings.Split(mappingStr, ",") {
+					parts := strings.Split(pair, ":")
+					if len(parts) == 2 {
+						samlConfig.RoleMappings[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+					} else {
+						klog.Warningf("Skipping malformed SAML role mapping: %s", pair)
+					}
+				}
+			}
+			authenticator, err = auth.NewSAMLSP(samlConfig)
+
+		case "OIDC":
+			oidcConfig := auth.OIDCConfig{
+				Enabled:      true,
+				IssuerURL:    getEnv("OIDC_ISSUER_URL", ""),
+				ClientID:     getEnv("OIDC_CLIENT_ID", ""),
+				ClientSecret: getEnv("OIDC_CLIENT_SECRET", ""),
+				RedirectURL:  getEnv("OIDC_REDIRECT_URL", ""),
+				GroupsField:  getEnv("OIDC_GROUPS_FIELD", ""),
+			}
+			oidcConfig.RoleMappings = make(map[string]string)
+			if mappingStr := getEnv("OIDC_ROLE_MAPPINGS", ""); mappingStr != "" {
+				for _, pair := range strings.Split(mappingStr, ",") {
+					parts := strings.Split(pair, ":")
+					if len(parts) == 2 {
+						oidcConfig.RoleMappings[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+					} else {
+						klog.Warningf("Skipping malformed OIDC role mapping: %s", pair)
+					}
+				}
+			}
+			authenticator, err = auth.NewOIDCSP(oidcConfig)
+
+		case "NONE":
+			authenticator = nil
+		default:
+			return fmt.Errorf("unknown AUTH_METHOD: %s", authMethod)
+		}
+
+		if err != nil {
+			return fmt.Errorf("initializing authenticator (%s): %w", authMethod, err)
+		}
+
+		userInterface, err = slack.NewSlackUI(agentManager, sessionManager, modelID, providerID, listenAddress, agentName, contextMessage, authenticator)
 		if err != nil {
 			return fmt.Errorf("creating slack UI: %w", err)
 		}

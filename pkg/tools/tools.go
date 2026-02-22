@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/google/uuid"
 	"k8s.io/klog/v2"
@@ -37,6 +38,7 @@ const (
 	KubeconfigKey ContextKey = "kubeconfig"
 	WorkDirKey    ContextKey = "work_dir"
 	EnvKey        ContextKey = "env"
+	IdentityKey   ContextKey = "identity"
 )
 
 func Lookup(name string) Tool {
@@ -136,6 +138,9 @@ type InvokeToolOptions struct {
 
 	// Env allows passing environment variables to the tool.
 	Env map[string]string
+
+	// Identity allows passing user identity for impersonation.
+	Identity *api.Identity
 }
 
 type ToolRequestEvent struct {
@@ -170,6 +175,9 @@ func (t *ToolCall) InvokeTool(ctx context.Context, opt InvokeToolOptions) (any, 
 
 	ctx = context.WithValue(ctx, KubeconfigKey, opt.Kubeconfig)
 	ctx = context.WithValue(ctx, WorkDirKey, opt.WorkDir)
+	if opt.Identity != nil {
+		ctx = context.WithValue(ctx, IdentityKey, opt.Identity)
+	}
 
 	response, err := t.tool.Run(ctx, t.arguments)
 
