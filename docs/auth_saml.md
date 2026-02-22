@@ -14,6 +14,7 @@ To enable SAML, set the following environment variables:
 | `SAML_ROOT_URL`         | The base URL of your chatbot                | `https://your-chatbot.com`               |
 | `SAML_KEY_FILE`         | Path to the SP private key                  | `/etc/saml/key.pem`                      |
 | `SAML_CERT_FILE`        | Path to the SP public certificate           | `/etc/saml/cert.pem`                     |
+| `SAML_GROUPS_FIELD`     | SAML attribute that contains user groups    | `groups`                                 |
 | `SAML_ROLE_MAPPINGS`    | Map of SAML attributes to K8s cluster roles | `admin:cluster-admin,dev:edit`           |
 
 > [!NOTE]
@@ -22,9 +23,11 @@ To enable SAML, set the following environment variables:
 ## Setup Steps
 
 1. **Generate Certificates**: Generate a private key and public certificate for the chatbot (Service Provider).
+
   ```bash
   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=kubeai-chatbot"
   ```
+
 2. **Configure IdP**:
 
   * **Single Sign-On URL (ACS)**: `https://<your-domain>/saml/acs`

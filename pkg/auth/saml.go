@@ -79,9 +79,14 @@ func NewSAMLSP(config SAMLConfig) (*SAMLSP, error) {
 		return nil, fmt.Errorf("fetching IDP metadata: %w", err)
 	}
 
+	rsaKey, ok := keyPair.PrivateKey.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("SAML requires an RSA private key, got: %T", keyPair.PrivateKey)
+	}
+
 	opts := samlsp.Options{
 		URL:               *rootURL,
-		Key:               keyPair.PrivateKey.(*rsa.PrivateKey),
+		Key:               rsaKey,
 		Certificate:       keyPair.Leaf,
 		IDPMetadata:       idpMetadata,
 		EntityID:          config.EntityID,
