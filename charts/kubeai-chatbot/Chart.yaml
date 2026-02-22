@@ -4,8 +4,8 @@ description: KubeAI Chatbot server for integration with Slack that offers detail
 home: https://github.com/KongZ/kubeai-chatbot
 icon: https://github.com/KongZ/kubeai-chatbot/blob/main/docs/kubeai-chatbot.png?raw=true
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.2.1
+appVersion: "0.2.1"
 sources:
   - https://www.github.com/KongZ/kubeai-chatbot
 maintainers:
