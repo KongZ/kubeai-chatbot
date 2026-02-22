@@ -43,8 +43,7 @@ In this example:
   - Users in the **AWS-Admins** group will be impersonated as `cluster-admin`.
   - Users in the **AWS-Developers** group will be impersonated as `edit`.
 
-> [!NOTE]
-> The Helm chart automatically adds the necessary `impersonate` permissions to the ClusterRole when `authentication.method` is set to `OIDC`.
+The Helm chart automatically adds the necessary `impersonate` permissions to the ClusterRole when `authentication.method` is set to `OIDC`.
 
 > [!IMPORTANT]
 > **Priority Matching**: If a user belongs to multiple groups that are present in the mapping, the chatbot will use the **first** match it encounters in the user's groups list.
