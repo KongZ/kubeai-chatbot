@@ -368,25 +368,25 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 		c.lastErr = nil
 		for {
 			var userInput any
-			log.Info("Agent loop iteration", "state", c.AgentState())
+			log.V(2).Info("Agent loop iteration", "state", c.AgentState())
 			switch c.AgentState() {
 			case api.AgentStateIdle, api.AgentStateDone:
 				// In RunOnce mode, we are done, so exit
 				if c.RunOnce {
-					log.Info("RunOnce mode, exiting agent loop")
+					log.V(2).Info("RunOnce mode, exiting agent loop")
 					c.setAgentState(api.AgentStateExited)
 					return
 				}
-				log.Info("initiating user input")
+				log.V(2).Info("initiating user input")
 				c.addMessage(api.MessageSourceAgent, api.MessageTypeUserInputRequest, ">>>")
 				select {
 				case <-ctx.Done():
-					log.Info("Agent loop done")
+					log.V(2).Info("Agent loop done")
 					return
 				case userInput = <-c.Input:
-					log.Info("Received input from channel", "userInput", userInput)
+					log.V(3).Info("Received input from channel", "userInput", userInput)
 					if userInput == io.EOF {
-						log.Info("Agent loop done, EOF received")
+						log.V(2).Info("Agent loop done, EOF received")
 						c.setAgentState(api.AgentStateExited)
 						c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "It has been a pleasure assisting you. Have a great day!")
 						return
@@ -397,7 +397,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 						return
 					}
 					if strings.TrimSpace(query.Query) == "" {
-						log.Info("No query provided, skipping agentic loop")
+						log.V(2).Info("No query provided, skipping agentic loop")
 						continue
 					}
 					c.addMessage(api.MessageSourceUser, api.MessageTypeText, query.Query)
@@ -446,11 +446,11 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				}
 				select {
 				case <-ctx.Done():
-					log.Info("Agent loop done")
+					log.V(2).Info("Agent loop done")
 					return
 				case userInput = <-c.Input:
 					if userInput == io.EOF {
-						log.Info("Agent loop done, EOF received")
+						log.V(2).Info("Agent loop done, EOF received")
 						c.setAgentState(api.AgentStateExited)
 						c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "It has been a pleasure assisting you. Have a great day!")
 						return
@@ -490,14 +490,14 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				}
 			case api.AgentStateRunning:
 				// Agent is running, don't wait for input, just continue to process the agentic loop
-				log.Info("Agent is in running state, processing agentic loop")
+				log.V(2).Info("Agent is in running state, processing agentic loop")
 			case api.AgentStateExited:
-				log.Info("Agent exited in RunOnce mode")
+				log.V(2).Info("Agent exited in RunOnce mode")
 				return
 			}
 
 			if c.AgentState() == api.AgentStateRunning {
-				log.Info("Processing agentic loop", "currIteration", c.currIteration, "maxIterations", c.MaxIterations, "currChatContentLen", len(c.currChatContent))
+				log.V(2).Info("Processing agentic loop", "currIteration", c.currIteration, "maxIterations", c.MaxIterations, "currChatContentLen", len(c.currChatContent))
 
 				if c.currIteration >= c.MaxIterations {
 					c.setAgentState(api.AgentStateDone)
@@ -570,13 +570,13 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					for _, part := range candidate.Parts() {
 						// Check if it's a text response
 						if text, ok := part.AsText(); ok {
-							log.Info("text response", "text", text)
+							log.V(3).Info("text response", "text", text)
 							streamedText += text
 						}
 
 						// Check if it's a function call
 						if calls, ok := part.AsFunctionCalls(); ok && len(calls) > 0 {
-							log.Info("function calls", "calls", calls)
+							log.V(2).Info("function calls", "calls", calls)
 							functionCalls = append(functionCalls, calls...)
 						}
 					}
@@ -589,7 +589,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					c.lastErr = llmError
 					continue
 				}
-				log.Info("streamedText", "streamedText", streamedText)
+				log.V(2).Info("streamedText", "streamedText", streamedText)
 
 				if streamedText != "" {
 					msg := c.addMessage(api.MessageSourceModel, api.MessageTypeText, streamedText)
@@ -600,17 +600,17 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				}
 				// If no function calls to be made, we're done
 				if len(functionCalls) == 0 {
-					log.Info("No function calls to be made, so most likely the task is completed, so we're done.")
+					log.V(2).Info("No function calls to be made, so most likely the task is completed, so we're done.")
 					c.setAgentState(api.AgentStateDone)
 					c.currChatContent = []any{}
 					c.currIteration = 0
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
-					log.Info("Agent task completed, transitioning to done state")
+					log.V(2).Info("Agent task completed, transitioning to done state")
 					if streamedText == "" {
 						// If no tool calls to be made and we do not have a response from the LLM
 						// we should let the user know for better diagnostics.
 						// IMPORTANT: This also prevents UIs from getting blocked on reading from the output channel.
-						log.Info("Empty response with no tool calls from LLM.")
+						log.V(2).Info("Empty response with no tool calls from LLM.")
 						msg := c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Empty response from LLM")
 						msg.Metadata["is_final"] = "true"
 					}
