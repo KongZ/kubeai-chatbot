@@ -103,7 +103,6 @@ sequenceDiagram
   S->>UI: POST /slack/events
   UI-->>S: 200 OK (Immediate Ack)
 
-  rect rgba(43, 43, 43, 1)
   Note over UI,Ag: Background Processing
   UI->>Ag: Check Authentication
   alt Not Authenticated
@@ -128,7 +127,6 @@ sequenceDiagram
   Ag->>UI: Final Response
   UI->>S: Post Message
   S->>U: Display Response
-  end
 ```
 
 ## Session Management
