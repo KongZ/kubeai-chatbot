@@ -48,6 +48,7 @@ Stores sessions locally as files on the container's disk (specifically under `~/
   **Note on Kubernetes:** Because the filesystem backend writes to `~/.kubeai/sessions/`, you must mount a Kubernetes `PersistentVolumeClaim` (PVC) to the home directory or `/home/kubeai/.kubeai/sessions` (depending on the container's user) if you want the data to survive pod recreation and node migrations.
 
 ### 3. Postgres (`postgres`)
+
 A robust, relational database backend storing sessions in PostgreSQL.
 
   - **Characteristics**: Highly available, persistent, safely handles concurrent read/writes.
