@@ -123,7 +123,7 @@ Update your Helm values file to annotate the service account:
 serviceAccount:
   create: true
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::111111111111:role/kubeai-chatbot"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_A_ID:role/kubeai-chatbot"
   name: "kubeai-chatbot"
 ```
 
@@ -132,7 +132,7 @@ Or apply directly:
 ```bash
 kubectl annotate serviceaccount kubeai-chatbot \
   -n kubeai-chatbot \
-  eks.amazonaws.com/role-arn=arn:aws:iam::111111111111:role/kubeai-chatbot
+  eks.amazonaws.com/role-arn=arn:aws:iam::ACCOUNT_A_ID:role/kubeai-chatbot
 ```
 
 ---
@@ -150,18 +150,18 @@ clusters:
 - cluster:
     certificate-authority-data: <BASE64_ENCODED_CA>
     server: https://<CLUSTER_B_API_ENDPOINT>
-  name: arn:aws:eks:ap-southeast-1:222222222222:cluster/cluster-b
+  name: arn:aws:eks:ap-southeast-1:ACCOUNT_B_ID:cluster/cluster-b
 
 contexts:
 - context:
-    cluster: arn:aws:eks:ap-southeast-1:222222222222:cluster/cluster-b
-    user: arn:aws:eks:ap-southeast-1:222222222222:cluster/cluster-b
+    cluster: arn:aws:eks:ap-southeast-1:ACCOUNT_B_ID:cluster/cluster-b
+    user: arn:aws:eks:ap-southeast-1:ACCOUNT_B_ID:cluster/cluster-b
   name: cluster-b
 
 current-context: cluster-b
 
 users:
-- name: arn:aws:eks:ap-southeast-1:222222222222:cluster/cluster-b
+- name: arn:aws:eks:ap-southeast-1:ACCOUNT_B_ID:cluster/cluster-b
   user:
     exec:
       apiVersion: client.authentication.k8s.io/v1beta1
@@ -177,7 +177,7 @@ users:
       - json
       env:
       - name: AWS_ROLE_ARN
-        value: arn:aws:iam::222222222222:role/EKSCrossAccountRole
+        value: arn:aws:iam::ACCOUNT_B_ID:role/EKSCrossAccountRole
       - name: AWS_WEB_IDENTITY_TOKEN_FILE
         value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
 ```
@@ -189,7 +189,7 @@ users:
 aws eks update-kubeconfig \
   --name cluster-b \
   --region ap-southeast-1 \
-  --role-arn arn:aws:iam::222222222222:role/EKSCrossAccountRole \
+  --role-arn arn:aws:iam::ACCOUNT_B_ID:role/EKSCrossAccountRole \
   --kubeconfig ./kubeconfig
 
 # Verify contexts
@@ -258,7 +258,7 @@ metadata:
 data:
   mapRoles: |
     # ... existing roles ...
-    - rolearn: arn:aws:iam::111111111111:role/kubeai-chatbot
+    - rolearn: arn:aws:iam::ACCOUNT_A_ID:role/kubeai-chatbot
       username: kubeai-chatbot
       groups:
         - system:read-only
@@ -271,7 +271,7 @@ data:
 aws eks create-access-entry \
   --cluster-name cluster-b \
   --region ap-southeast-1 \
-  --principal-arn arn:aws:iam::111111111111:role/kubeai-chatbot \
+  --principal-arn arn:aws:iam::ACCOUNT_A_ID:role/kubeai-chatbot \
   --type STANDARD \
   --username kubeai-chatbot-cross-cluster
 
@@ -279,7 +279,7 @@ aws eks create-access-entry \
 aws eks associate-access-policy \
   --cluster-name cluster-b \
   --region ap-southeast-1 \
-  --principal-arn arn:aws:iam::111111111111:role/kubeai-chatbot \
+  --principal-arn arn:aws:iam::ACCOUNT_A_ID:role/kubeai-chatbot \
   --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy \
   --access-scope type=cluster
 ```
