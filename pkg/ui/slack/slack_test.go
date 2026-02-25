@@ -386,7 +386,7 @@ func TestHandleSlackEvents_Callback(t *testing.T) {
 		activeTriggers:  make(map[string]string),
 	}
 
-	body := `{"type":"event_callback","event":{"type":"app_mention","channel":"C1","ts":"1.1","text":"hello"}}`
+	body := `{"type":"event_callback","event":{"type":"app_mention","channel":"C1","ts":"1.1","text":"hello","user":"U1"}}`
 	ts := fmt.Sprintf("%d", time.Now().Unix())
 	msg := fmt.Sprintf("v0:%s:%s", ts, body)
 	h := hmac.New(sha256.New, []byte(signingSecret))
