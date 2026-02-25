@@ -117,6 +117,10 @@ func NewInMemoryChatStore() *InMemoryChatStore {
 	}
 }
 
+// maxChatMessages is the upper bound on in-memory messages per session.
+// When exceeded, the oldest messages are trimmed to prevent unbounded growth.
+const maxChatMessages = 500
+
 // AddChatMessage adds a message to the store.
 func (s *InMemoryChatStore) AddChatMessage(record *api.Message) error {
 	if err := record.Validate(); err != nil {
@@ -125,6 +129,10 @@ func (s *InMemoryChatStore) AddChatMessage(record *api.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messages = append(s.messages, record)
+	// Trim oldest messages to prevent unbounded memory growth
+	if len(s.messages) > maxChatMessages {
+		s.messages = s.messages[len(s.messages)-maxChatMessages:]
+	}
 	return nil
 }
 

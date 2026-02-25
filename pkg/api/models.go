@@ -89,6 +89,14 @@ func (m *Message) Validate() error {
 	return validate.Struct(m)
 }
 
+// SetMetadata sets a metadata key-value pair, lazily initializing the map if needed.
+func (m *Message) SetMetadata(key, value string) {
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]string)
+	}
+	m.Metadata[key] = value
+}
+
 type MessageSource string
 
 const (

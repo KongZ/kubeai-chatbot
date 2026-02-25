@@ -121,6 +121,9 @@ type Agent struct {
 	// SessionBackend is the configured backend for session persistence (e.g., memory, filesystem).
 	SessionBackend string
 
+	// sessionManager is a cached SessionManager instance, initialized once in Init.
+	sessionManager *sessions.SessionManager
+
 	// lastErr is the most recent error run into, for use across the stack
 	lastErr error
 
@@ -133,6 +136,18 @@ type Agent struct {
 
 // Assert InMemoryChatStore implements ChatMessageStore
 var _ api.ChatMessageStore = &sessions.InMemoryChatStore{}
+
+// getSessionManager returns the cached session manager, lazily initializing it if needed.
+func (c *Agent) getSessionManager() (*sessions.SessionManager, error) {
+	if c.sessionManager == nil {
+		sm, err := sessions.NewSessionManager(c.SessionBackend)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create session manager: %w", err)
+		}
+		c.sessionManager = sm
+	}
+	return c.sessionManager, nil
+}
 
 func (s *Agent) GetSession() *api.Session {
 	s.sessionMu.Lock()
@@ -156,7 +171,6 @@ func (c *Agent) addMessage(source api.MessageSource, messageType api.MessageType
 		Type:      messageType,
 		Payload:   payload,
 		Timestamp: time.Now(),
-		Metadata:  make(map[string]string),
 	}
 
 	// session should always have a ChatMessageStore at this point
@@ -224,6 +238,13 @@ func (s *Agent) Init(ctx context.Context) error {
 	} else {
 		return fmt.Errorf("agent requires a session to be provided")
 	}
+
+	// Initialize session manager for reuse across agent methods
+	sessionMgr, err := sessions.NewSessionManager(s.SessionBackend)
+	if err != nil {
+		return fmt.Errorf("failed to create session manager: %w", err)
+	}
+	s.sessionManager = sessionMgr
 
 	// Create a session working directory in the user's home directory
 	// to avoid read-only filesystem issues in containers
@@ -595,7 +616,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					msg := c.addMessage(api.MessageSourceModel, api.MessageTypeText, streamedText)
 					// If no function calls to be made, this is the final message of the turn
 					if len(functionCalls) == 0 {
-						msg.Metadata["is_final"] = "true"
+						msg.SetMetadata("is_final", "true")
 					}
 				}
 				// If no function calls to be made, we're done
@@ -612,7 +633,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 						// IMPORTANT: This also prevents UIs from getting blocked on reading from the output channel.
 						log.V(2).Info("Empty response with no tool calls from LLM.")
 						msg := c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Empty response from LLM")
-						msg.Metadata["is_final"] = "true"
+						msg.SetMetadata("is_final", "true")
 					}
 					continue
 				}
@@ -788,12 +809,11 @@ func (c *Agent) handleMetaQuery(ctx context.Context, query string) (answer strin
 		return "Saved session as " + savedSessionID, true, nil
 
 	case "sessions":
-		manager, err := sessions.NewSessionManager(c.SessionBackend)
+		mgr, err := c.getSessionManager()
 		if err != nil {
-			return "", false, fmt.Errorf("failed to create session manager: %w", err)
+			return "", false, err
 		}
-
-		sessionList, err := manager.ListSessions()
+		sessionList, err := mgr.ListSessions()
 		if err != nil {
 			return "", false, fmt.Errorf("failed to list sessions: %w", err)
 		}
@@ -840,11 +860,6 @@ func (c *Agent) NewSession() (string, error) {
 		return "", fmt.Errorf("failed to save current session: %w", err)
 	}
 
-	manager, err := sessions.NewSessionManager(c.SessionBackend)
-	if err != nil {
-		return "", fmt.Errorf("failed to create session manager: %w", err)
-	}
-
 	metadata := sessions.Metadata{
 		ModelID:    c.Model,
 		ProviderID: c.Provider,
@@ -853,7 +868,11 @@ func (c *Agent) NewSession() (string, error) {
 		metadata.SlackUserID = c.Session.SlackUserID
 	}
 
-	newSession, err := manager.NewSession(metadata)
+	mgr, err := c.getSessionManager()
+	if err != nil {
+		return "", err
+	}
+	newSession, err := mgr.NewSession(metadata)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new session: %w", err)
 	}
@@ -910,13 +929,13 @@ func (c *Agent) SaveSession() (string, error) {
 	c.sessionMu.Lock()
 	defer c.sessionMu.Unlock()
 
-	manager, err := sessions.NewSessionManager(c.SessionBackend)
+	mgr, err := c.getSessionManager()
 	if err != nil {
-		return "", fmt.Errorf("failed to create session manager: %w", err)
+		return "", err
 	}
 
 	if c.Session != nil {
-		foundSession, _ := manager.FindSessionByID(c.Session.ID)
+		foundSession, _ := mgr.FindSessionByID(c.Session.ID)
 		if foundSession != nil {
 			return foundSession.ID, nil
 		}
@@ -930,7 +949,7 @@ func (c *Agent) SaveSession() (string, error) {
 		SlackUserID:  c.Session.SlackUserID,
 	}
 
-	newSession, err := manager.NewSession(metadata)
+	newSession, err := mgr.NewSession(metadata)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new session: %w", err)
 	}
@@ -953,14 +972,14 @@ func (c *Agent) SaveSession() (string, error) {
 
 // LoadSession loads a session by ID (or latest), updates the agent's state, and re-initializes the chat.
 func (c *Agent) LoadSession(sessionID string) error {
-	manager, err := sessions.NewSessionManager(c.SessionBackend)
+	mgr, err := c.getSessionManager()
 	if err != nil {
-		return fmt.Errorf("failed to create session manager: %w", err)
+		return err
 	}
 
 	var session *api.Session
 	if sessionID == "" || sessionID == "latest" {
-		s, err := manager.GetLatestSession()
+		s, err := mgr.GetLatestSession()
 		if err != nil {
 			return fmt.Errorf("failed to get latest session: %w", err)
 		}
@@ -969,7 +988,7 @@ func (c *Agent) LoadSession(sessionID string) error {
 		}
 		session = s
 	} else {
-		s, err := manager.FindSessionByID(sessionID)
+		s, err := mgr.FindSessionByID(sessionID)
 		if err != nil {
 			return fmt.Errorf("failed to get session %q: %w", sessionID, err)
 		}
@@ -993,7 +1012,7 @@ func (c *Agent) LoadSession(sessionID string) error {
 		c.Session.AgentState = api.AgentStateIdle
 	}
 
-	if err := manager.UpdateLastAccessed(session); err != nil {
+	if err := mgr.UpdateLastAccessed(session); err != nil {
 		return fmt.Errorf("failed to update session metadata: %w", err)
 	}
 
@@ -1262,7 +1281,7 @@ func toMap(v any) (map[string]any, error) {
 
 func candidateToShimCandidate(iterator gollm.ChatResponseIterator) (gollm.ChatResponseIterator, error) {
 	return func(yield func(gollm.ChatResponse, error) bool) {
-		buffer := ""
+		var buf strings.Builder
 		for response, err := range iterator {
 			if err != nil {
 				yield(nil, err)
@@ -1278,7 +1297,7 @@ func candidateToShimCandidate(iterator gollm.ChatResponseIterator) (gollm.ChatRe
 
 			for _, part := range candidate.Parts() {
 				if text, ok := part.AsText(); ok {
-					buffer += text
+					buf.WriteString(text)
 					klog.Infof("text is %q", text)
 				} else {
 					yield(nil, fmt.Errorf("no text part found in candidate"))
@@ -1287,6 +1306,7 @@ func candidateToShimCandidate(iterator gollm.ChatResponseIterator) (gollm.ChatRe
 			}
 		}
 
+		buffer := buf.String()
 		if buffer == "" {
 			yield(nil, nil)
 			return

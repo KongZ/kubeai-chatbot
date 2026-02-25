@@ -21,12 +21,29 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"mvdan.cc/sh/v3/shell"
 )
+
+var (
+	cachedBaseEnv     []string
+	cachedBaseEnvOnce sync.Once
+)
+
+// baseEnviron returns a copy of the cached process environment.
+// The base environment is captured once to avoid repeated os.Environ() syscalls.
+func baseEnviron() []string {
+	cachedBaseEnvOnce.Do(func() {
+		cachedBaseEnv = os.Environ()
+	})
+	env := make([]string, len(cachedBaseEnv))
+	copy(env, cachedBaseEnv)
+	return env
+}
 
 type ExecResult struct {
 	Command    string `json:"command"`
@@ -114,8 +131,8 @@ func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 	// Reconstruct command for reporting
 	fullCommand := strings.Join(cmdArgs, " ")
 
-	// Prepare environment
-	env := os.Environ()
+	// Prepare environment (use cached base to avoid repeated syscalls)
+	env := baseEnviron()
 	if kubeconfig != "" {
 		kubeconfig, err := ExpandShellVar(kubeconfig)
 		if err != nil {
