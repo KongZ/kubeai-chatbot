@@ -286,9 +286,9 @@ aws eks associate-access-policy \
 
 ---
 
-## Step 6: Add Cluster-A Outgoing IP to Cluster-B Security Group
+## Step 6: Add Cluster-A Outgoing IP to Cluster-B API Server Public Access Allowlist
 
-Get Cluster-A's NAT Gateway public IPs and add them to Cluster-B's EKS API security group.
+Get Cluster-A's NAT Gateway public IPs and add them to Cluster-B's Kubernetes API server public access allowlist. (Note: The node security group is intended for pods and services, whereas API access from outside the VPC requires updating the endpoint public access CIDRs).
 
 ### 6.1 Find Cluster-A NAT Gateway IPs
 
@@ -314,37 +314,24 @@ Example output:
 18.0.38.139
 ```
 
-### 6.2 Add IPs to Cluster-B Security Group
+### 6.2 Add IPs to Cluster-B Public Access Allowlist
+
+Update the EKS cluster networking configuration to include the NAT IPs in the `publicAccessCidrs` list. Make sure to include any existing CIDRs you already have allowed, as this command overwrites the existing list.
 
 ```bash
-# Get Cluster-B's security group
-CLUSTER_B_SG=$(aws eks describe-cluster \
+# Get current public access CIDRs
+aws eks describe-cluster \
   --name cluster-b \
   --region ap-southeast-1 \
-  --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' \
-  --output text)
+  --query 'cluster.resourcesVpcConfig.publicAccessCidrs' \
+  --output json
 
-# Add ingress rules for each NAT IP
-aws ec2 authorize-security-group-ingress \
-  --group-id $CLUSTER_B_SG \
-  --protocol tcp \
-  --port 443 \
-  --cidr 18.0.35.117/32 \
-  --region ap-southeast-1
-
-aws ec2 authorize-security-group-ingress \
-  --group-id $CLUSTER_B_SG \
-  --protocol tcp \
-  --port 443 \
-  --cidr 18.0.37.11/32 \
-  --region ap-southeast-1
-
-aws ec2 authorize-security-group-ingress \
-  --group-id $CLUSTER_B_SG \
-  --protocol tcp \
-  --port 443 \
-  --cidr 18.0.38.139/32 \
-  --region ap-southeast-1
+# Update cluster config with the new NAT IPs + existing ones
+# Replace <EXISTING_CIDRS> with what was returned from the command above (e.g., "0.0.0.0/0" or specific IPs)
+aws eks update-cluster-config \
+  --name cluster-b \
+  --region ap-southeast-1 \
+  --resources-vpc-config publicAccessCidrs="18.0.35.117/32","18.0.37.11/32","18.0.38.139/32","<EXISTING_CIDRS>"
 ```
 
 ---
@@ -421,8 +408,8 @@ kubectl config get-contexts
 
 **Solution**: Check that:
 
-  1. Cluster-A's NAT Gateway IPs are added to Cluster-B's security group
-  2. Security group allows inbound traffic on port 443
+  1. Cluster-A's NAT Gateway IPs are added to Cluster-B's API server public access allowlist (`publicAccessCidrs`)
+  2. Public endpoint access is enabled for Cluster-B
   3. Network connectivity between clusters is working
 
 ### Issue: "error: exec plugin: invalid apiVersion"
