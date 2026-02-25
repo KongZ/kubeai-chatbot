@@ -150,6 +150,7 @@ KubeAI Chatbot is built with safety as a priority:
 ## 🏗️ Architecture
 
   - [System Architecture](docs/architecture.md)
+  - [Session Storage Setup](docs/session_storage.md)
   - [SAML Authentication Setup](docs/auth_saml.md)
   - [OIDC Authentication Setup](docs/auth_oidc.md)
   - [Cross-Cluster Access Setup](docs/cross_cluster_access.md)
