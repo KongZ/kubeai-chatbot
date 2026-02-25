@@ -20,6 +20,7 @@ A Session object (`api.Session`) tracks the following core information:
 The platform supports three distinct session storage types, each fulfilling different use cases and scaling requirements. Storage backends are configured in the Helm chart (`values.yaml`) via the `env` section, utilizing the `SESSION_TYPE` and `DATABASE_URL` environment variables.
 
 ### 1. Memory (`memory`)
+
 An entirely in-memory data store.
 
   - **Characteristics**: Fast, no external dependencies, entirely volatile.
@@ -32,6 +33,7 @@ An entirely in-memory data store.
     ```
 
 ### 2. Filesystem (`filesystem`)
+
 Stores sessions locally as files on the container's disk (specifically under `~/.kubeai/sessions/`).
 
   - **Characteristics**: Simple persistent storage. Survives application crashes if backed by a persistent volume, but is not concurrent-safe across multiple replicas.
@@ -41,7 +43,7 @@ Stores sessions locally as files on the container's disk (specifically under `~/
     ```yaml
     env:
       SESSION_TYPE: "filesystem"
-  ```
+    ```
 
   **Note on Kubernetes:** Because the filesystem backend writes to `~/.kubeai/sessions/`, you must mount a Kubernetes `PersistentVolumeClaim` (PVC) to the home directory or `/home/kubeai/.kubeai/sessions` (depending on the container's user) if you want the data to survive pod recreation and node migrations.
 
