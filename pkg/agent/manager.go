@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
@@ -28,6 +29,9 @@ import (
 // Factory is a function that creates a new Agent instance.
 type Factory func(context.Context) (*Agent, error)
 
+// defaultIdleTimeout is how long an agent can sit idle before being evicted.
+const defaultIdleTimeout = 30 * time.Minute
+
 // AgentManager manages the lifecycle of agents and their sessions.
 type AgentManager struct {
 	factory        Factory
@@ -35,15 +39,20 @@ type AgentManager struct {
 	agents         map[string]*Agent // sessionID -> agent
 	mu             sync.RWMutex
 	onAgentCreated func(*Agent)
+	stopCh         chan struct{}
+	closeOnce      sync.Once
 }
 
 // NewAgentManager creates a new Manager.
 func NewAgentManager(factory Factory, sessionManager *sessions.SessionManager) *AgentManager {
-	return &AgentManager{
+	m := &AgentManager{
 		factory:        factory,
 		sessionManager: sessionManager,
 		agents:         make(map[string]*Agent),
+		stopCh:         make(chan struct{}),
 	}
+	go m.evictionLoop(defaultIdleTimeout)
+	return m
 }
 
 // SetAgentCreatedCallback sets the callback to be called when a new agent is created.
@@ -80,8 +89,12 @@ func (sm *AgentManager) GetAgent(ctx context.Context, sessionID string) (*Agent,
 	return sm.startAgent(ctx, session, newAgent)
 }
 
-// Close closes all active agents.
+// Close closes all active agents and stops the eviction loop.
 func (sm *AgentManager) Close() error {
+	sm.closeOnce.Do(func() {
+		close(sm.stopCh)
+	})
+
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -94,6 +107,44 @@ func (sm *AgentManager) Close() error {
 	// Clear the map
 	sm.agents = make(map[string]*Agent)
 	return nil
+}
+
+// evictionLoop periodically checks for and evicts idle agents.
+func (sm *AgentManager) evictionLoop(idleTimeout time.Duration) {
+	ticker := time.NewTicker(idleTimeout / 2)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			sm.evictIdleAgents(idleTimeout)
+		case <-sm.stopCh:
+			return
+		}
+	}
+}
+
+// evictIdleAgents removes agents that have been idle longer than the timeout.
+func (sm *AgentManager) evictIdleAgents(idleTimeout time.Duration) {
+	now := time.Now()
+
+	sm.mu.Lock()
+	var toClose []*Agent
+	for id, a := range sm.agents {
+		session := a.GetSession()
+		if now.Sub(session.LastModified) > idleTimeout {
+			klog.Infof("Evicting idle agent for session %s (idle for %v)", id, now.Sub(session.LastModified))
+			toClose = append(toClose, a)
+			delete(sm.agents, id)
+		}
+	}
+	sm.mu.Unlock()
+
+	// Close evicted agents outside the lock to avoid blocking
+	for _, a := range toClose {
+		if err := a.Close(); err != nil {
+			klog.Errorf("Error closing evicted agent: %v", err)
+		}
+	}
 }
 
 // ListSessions delegates to the underlying store.

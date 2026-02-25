@@ -69,6 +69,7 @@ type SlackUI struct {
 	mu              sync.Mutex
 	processedEvents map[string]time.Time
 	activeTriggers  map[string]string // sessionID -> user message ts
+	stopCh          chan struct{}
 }
 
 var _ ui.UI = &SlackUI{}
@@ -95,6 +96,7 @@ func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, d
 		processedEvents: make(map[string]time.Time),
 		activeTriggers:  make(map[string]string),
 		authenticator:   authenticator,
+		stopCh:          make(chan struct{}),
 	}
 
 	// Register callback to listen to new agents
@@ -133,6 +135,8 @@ func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, d
 	s.httpServerListener = listener
 	s.httpServer = httpServer
 
+	go s.cleanupLoop()
+
 	_, _ = fmt.Fprintf(os.Stdout, "listening on http://%s\n", endpoint)
 	return s, nil
 }
@@ -147,16 +151,40 @@ func (s *SlackUI) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		close(s.stopCh)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return s.httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:
+		close(s.stopCh)
 		return err
 	}
 }
 
 func (s *SlackUI) ClearScreen() {
 	// Not applicable
+}
+
+// cleanupLoop periodically removes stale processedEvents entries
+// to prevent unbounded map growth. Runs in a background goroutine.
+func (s *SlackUI) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.mu.Lock()
+			now := time.Now()
+			for k, v := range s.processedEvents {
+				if now.Sub(v) > 10*time.Minute {
+					delete(s.processedEvents, k)
+				}
+			}
+			s.mu.Unlock()
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
@@ -240,16 +268,6 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 			s.mu.Unlock()
 			w.WriteHeader(http.StatusOK)
 			return
-		}
-
-		// Cleanup old entries (older than 10 mins) every 100 messages to avoid leak
-		if len(s.processedEvents) > 100 {
-			now := time.Now()
-			for k, v := range s.processedEvents {
-				if now.Sub(v) > 10*time.Minute {
-					delete(s.processedEvents, k)
-				}
-			}
 		}
 
 		s.processedEvents[msgID] = time.Now()
