@@ -219,6 +219,14 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			channel, ts, threadTs, text, userID = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text, ev.User
+
+			// Sometimes user is embedded in other fields or it's a message changed event
+			if userID == "" && ev.Message != nil {
+				userID = ev.Message.User
+			}
+			if userID == "" {
+				klog.V(2).Infof("Missing userID in handleSlackEvents: event_type=%s sub_type=%s channel=%s ts=%s", innerEvent.Type, ev.SubType, channel, ts)
+			}
 		default:
 			w.WriteHeader(http.StatusOK)
 			return
@@ -348,7 +356,7 @@ func (s *SlackUI) processMessage(channel, threadTS, ts, text, userID string) {
 		}
 		session, err := s.sessionManager.NewSessionWithID(sessionID, meta)
 		if err != nil {
-			klog.Errorf("Failed to create session for Slack: %v", err)
+			klog.Errorf("Failed to create session for Slack: %v. meta: %+v", err, meta)
 			return
 		}
 		session.Name = "Slack Thread " + effectiveThreadTS
@@ -498,6 +506,9 @@ func (s *SlackUI) postToSlack(channel, threadTS, text string, includeContext boo
 	)
 	if err != nil {
 		klog.Errorf("Failed to post message to Slack: %v", err)
+		if strings.Contains(err.Error(), "invalid_auth") {
+			klog.Errorf("SLACK_BOT_TOKEN seems invalid or expired. Please check your environment variables.")
+		}
 		// If blocks are invalid, try uploading as snippet instead
 		if strings.Contains(err.Error(), "invalid_blocks") {
 			klog.Warningf("Blocks validation failed, uploading as snippet instead")
