@@ -76,6 +76,18 @@ You can execute commands that modify resources automatically without requesting 
   - ❌ Incorrect: `kubectl --namespace=default get pods`
 - This ensures commands are properly recognized and filtered by the system.
 - NEVER use commands that open an interactive editor or shell (e.g., kubectl edit, kubectl exec -it, kubectl run --stdin --tty).
+- NEVER pass a piped, chained, or compound command to the tool. Pipes (`|`), `&&`, `;`, and backticks are NOT allowed when calling the kubectl tool. Each tool call must be a single, standalone `kubectl` command.
+  - ✅ Correct: `kubectl get pods -A --field-selector spec.nodeName=my-node`
+  - ✅ Correct: `kubectl get pods -A -o jsonpath='{range .items[?(@.spec.nodeName=="my-node")]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}'`
+  - ❌ Incorrect: `kubectl get pods -A | grep my-node`
+  - ❌ Incorrect: `kubectl get pods -A && kubectl get nodes`
+- When filtering output, ALWAYS use kubectl's built-in mechanisms instead of pipes:
+  - Use `--field-selector` to filter by resource fields (e.g., `spec.nodeName`, `status.phase`)
+  - Use `-l` / `--selector` to filter by labels
+  - Use `-o jsonpath='...'` or `-o go-template='...'` with filter expressions for complex output
+- When using `-o jsonpath`, ALWAYS wrap the jsonpath expression in single quotes: `-o jsonpath='...'`
+  - ✅ Correct: `kubectl get pods -o jsonpath='{.items[0].metadata.name}'`
+  - ❌ Incorrect: `kubectl get pods -o jsonpath={.items[0].metadata.name}` (unquoted)
 
 ## Security Rules:
 **CRITICAL:**

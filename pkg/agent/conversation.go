@@ -60,15 +60,6 @@ type Agent struct {
 	// Output is the channel to send messages to the UI.
 	Output chan any
 
-	// RunOnce indicates if the agent should run only once.
-	// If true, the agent will run only once and then exit.
-	// If false, the agent will run in a loop until the context is done.
-	RunOnce bool
-
-	// InitialQuery is the initial query to the agent.
-	// If provided, the agent will run only once and then exit.
-	InitialQuery string
-
 	// AgentName is the name of the assistant.
 	AgentName string
 
@@ -229,10 +220,6 @@ func (s *Agent) Init(ctx context.Context) error {
 	// current history of the conversation.
 	s.currChatContent = []any{}
 
-	if s.InitialQuery == "" && s.RunOnce {
-		return fmt.Errorf("RunOnce mode requires an initial query to be provided")
-	}
-
 	if s.Session != nil {
 		if s.Session.ChatMessageStore == nil {
 			s.Session.ChatMessageStore = sessions.NewInMemoryChatStore()
@@ -280,11 +267,10 @@ func (s *Agent) Init(ctx context.Context) error {
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
-		Tools:             s.Tools,
-		EnableToolUseShim: s.EnableToolUseShim,
-		ModifyResources:   s.ModifyResources,
-		// RunOnce is a good proxy to indicate the agentic session is non-interactive mode.
-		SessionIsInteractive: !s.RunOnce,
+		Tools:                s.Tools,
+		EnableToolUseShim:    s.EnableToolUseShim,
+		ModifyResources:      s.ModifyResources,
+		SessionIsInteractive: true,
 		AgentName:            s.AgentName,
 	})
 	if err != nil {
@@ -359,14 +345,8 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 		ctx = journal.ContextWithSlackUserID(ctx, c.Session.SlackUserID)
 	}
 
-	// Save unexpected error and return it in for RunOnce mode
-	log.Info("Starting agent loop", "initialQuery", initialQuery, "runOnce", c.RunOnce)
+	log.Info("Starting agent loop", "initialQuery", initialQuery)
 	go func() {
-		// If initialQuery is empty, try to use the one from the struct
-		if initialQuery == "" {
-			initialQuery = c.InitialQuery
-		}
-
 		if initialQuery != "" {
 			c.addMessage(api.MessageSourceUser, api.MessageTypeText, initialQuery)
 			answer, handled, err := c.handleMetaQuery(ctx, initialQuery)
@@ -405,12 +385,6 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 			log.V(2).Info("Agent loop iteration", "state", c.AgentState())
 			switch c.AgentState() {
 			case api.AgentStateIdle, api.AgentStateDone:
-				// In RunOnce mode, we are done, so exit
-				if c.RunOnce {
-					log.V(2).Info("RunOnce mode, exiting agent loop")
-					c.setAgentState(api.AgentStateExited)
-					return
-				}
 				log.V(2).Info("initiating user input")
 				c.addMessage(api.MessageSourceAgent, api.MessageTypeUserInputRequest, ">>>")
 				select {
@@ -471,13 +445,6 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					log.Info("Set agent state to running, will process agentic loop", "currIteration", c.currIteration, "currChatContent", len(c.currChatContent))
 				}
 			case api.AgentStateWaitingForInput:
-				// In RunOnce mode, if we need user choice, exit with error
-				if c.RunOnce {
-					log.Error(nil, "RunOnce mode cannot handle user choice requests")
-					c.setAgentState(api.AgentStateExited)
-					c.addMessage(api.MessageSourceAgent, api.MessageTypeError, "Error: RunOnce mode cannot handle user choice requests")
-					return
-				}
 				select {
 				case <-ctx.Done():
 					log.V(2).Info("Agent loop done")
@@ -502,12 +469,6 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 							c.pendingFunctionCalls = []ToolCallAnalysis{}
 							c.Session.LastModified = time.Now()
 							c.addMessage(api.MessageSourceAgent, api.MessageTypeError, "Error: "+err.Error())
-							// In RunOnce mode, exit on tool execution error
-							if c.RunOnce {
-								c.setAgentState(api.AgentStateExited)
-								c.lastErr = err
-								return
-							}
 							continue
 						}
 						// Clear pending function calls after execution
@@ -526,7 +487,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				// Agent is running, don't wait for input, just continue to process the agentic loop
 				log.V(2).Info("Agent is in running state, processing agentic loop")
 			case api.AgentStateExited:
-				log.V(2).Info("Agent exited in RunOnce mode")
+				log.V(2).Info("Agent exited")
 				return
 			}
 
@@ -559,13 +520,6 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					if err != nil {
 						c.setAgentState(api.AgentStateDone)
 						c.pendingFunctionCalls = []ToolCallAnalysis{}
-
-						// In RunOnce mode, exit on shim conversion error
-						if c.RunOnce {
-							c.setAgentState(api.AgentStateExited)
-							return
-						}
-
 						continue
 					}
 				}
@@ -702,20 +656,14 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				}
 
 				if !c.SkipPermissions && c.ModifyResources != ModifyResourcesModeAuto && modifiesResourceToolCallIndex >= 0 {
-					// In RunOnce mode or read-only mode, block the write and return an error
-					if c.RunOnce || c.ModifyResources == ModifyResourcesModeNone {
+					// In read-only mode, block the write and return an error
+					if c.ModifyResources == ModifyResourcesModeNone {
 						var commandDescriptions []string
 						for _, call := range c.pendingFunctionCalls {
 							commandDescriptions = append(commandDescriptions, call.ParsedToolCall.Description())
 						}
 
-						var errorMessage string
-						if c.ModifyResources == ModifyResourcesModeNone {
-							errorMessage = "Resource modification is disabled (read-only mode). Provide the exact `kubectl` command in your response for the user to execute manually instead of using this tool."
-						} else {
-							errorMessage = "RunOnce mode cannot handle permission requests. The following commands require approval:\n* " + strings.Join(commandDescriptions, "\n* ")
-							errorMessage += "\nUse --skip-permissions flag to bypass permission checks in RunOnce mode."
-						}
+						errorMessage := "Resource modification is disabled (read-only mode). The following commands were blocked:\n* " + strings.Join(commandDescriptions, "\n* ") + "\nProvide the exact `kubectl` command in your response for the user to execute manually instead of using this tool."
 
 						log.Error(nil, "Tool call blocked", "reason", errorMessage, "commands", commandDescriptions)
 
@@ -901,7 +849,7 @@ func (c *Agent) NewSession() (string, error) {
 		Tools:                c.Tools,
 		EnableToolUseShim:    c.EnableToolUseShim,
 		ModifyResources:      c.ModifyResources,
-		SessionIsInteractive: !c.RunOnce,
+		SessionIsInteractive: true,
 		AgentName:            c.AgentName,
 	})
 	if err != nil {
