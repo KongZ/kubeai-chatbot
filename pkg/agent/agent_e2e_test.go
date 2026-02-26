@@ -400,7 +400,7 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 	if msg == nil {
 		t.Fatalf("did not receive error message when tool was blocked")
 	}
-	if !strings.Contains(msg.Payload.(string), "Automatic resource modification is DISABLED") {
+	if !strings.Contains(msg.Payload.(string), "Resource modification is disabled (read-only mode)") {
 		t.Fatalf("unexpected error message: %v", msg.Payload)
 	}
 
