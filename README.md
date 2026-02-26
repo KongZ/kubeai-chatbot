@@ -28,7 +28,7 @@ KubeAI Chatbot addresses these pain points by:
     - **Snippet Support**: Automatically uploads long responses as text snippets to keep channels clean.
   - **Enterprise Safety Controls**:
     - **Zero-Trust Secrets**: Strict, hardcoded blocking of any attempts to retrieve or list Kubernetes secrets.
-    - **Modification Guard**: Prevent accidental resource modifications with the `AUTOMATIC_MODIFY_RESOURCES` safety switch.
+    - **Modification Guard**: Three-tier `MODIFY_RESOURCES` control — `none` (read-only), `allow` (confirm before write), or `auto` (fully autonomous writes).
   - **Multi-Cloud Ready**: Support for GKE (with auth plugin), EKS, and standard clusters.
 
 ## 🚀 Quick Start
@@ -61,7 +61,7 @@ The easiest way to set up your Slack app is using the provided manifest:
 | :--------------------------- | :------------------------------------------------ | :------------------- |
 | `SLACK_BOT_TOKEN`            | Slack Bot User OAuth Token                        | Required             |
 | `SLACK_SIGNING_SECRET`       | Slack app Signing Secret                          | Required             |
-| `AUTOMATIC_MODIFY_RESOURCES` | Enable/Disable AI's ability to run write commands | `false`              |
+| `MODIFY_RESOURCES`           | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md)) | `none` |
 | `KUBECONFIG`                 | Path to your kubeconfig file                      | `$HOME/.kube/config` |
 | `LISTEN_ADDRESS`             | Address for the bot to listen on                  | `0.0.0.0:8888`       |
 | `AUTH_METHOD`                | Auth method (`SAML`, `OIDC`, or `NONE`)           | `NONE`               |
@@ -144,12 +144,13 @@ For detailed setup instructions, see:
 KubeAI Chatbot is built with safety as a priority:
 
   - **Immutable Secrets**: The bot is hardcoded to refuse any request involving `kubectl secrets`. This prevention happens at both the LLM prompt level and the tool execution validator.
-  - **Confirmation Flow**: By default, `AUTOMATIC_MODIFY_RESOURCES` is set to `false`. The bot will generate resource-modifying commands but will not execute them, instead providing the command for you to run manually.
+  - **Modification Modes**: The `MODIFY_RESOURCES` env var controls write access with three levels: `none` (read-only — bot provides commands for you to run manually), `allow` (bot can execute writes only after you say yes), and `auto` (bot executes writes autonomously). Default is `none`. See [Modification Modes](docs/modification_modes.md) for details.
   - **Use Secret Manager**: Although KubeAI Chatbot is built with secret requests denied, it is strongly recommended to use a secret manager to store sensitive information such as API keys, tokens, and other credentials. [piggy](https://github.com/KongZ/piggy) supports AWS Secret Manager and provides highly secure encapsulation without leaving any trace of the secret in Kubernetes.
 
 ## 🏗️ Architecture
 
   - [System Architecture](docs/architecture.md)
+  - [Modification Modes](docs/modification_modes.md)
   - [Session Storage Setup](docs/session_storage.md)
   - [SAML Authentication Setup](docs/auth_saml.md)
   - [OIDC Authentication Setup](docs/auth_oidc.md)

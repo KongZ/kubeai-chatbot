@@ -63,7 +63,7 @@ graph TB
   * Ensures clean startup and shutdown of agent loops.
   * Maintains the state machine for a single conversation.
   * Interacts with the LLM to process queries and determine tool usage.
-  * Enforces safety rules (e.g., preventing secret retrieval or unauthorized modifications).
+  * Enforces safety rules: Kubernetes Secrets are always blocked; resource writes are gated by the configured [Modification Mode](modification_modes.md).
 
 3. **Tool Executor (`pkg/tools`)**:
 
