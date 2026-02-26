@@ -19,6 +19,12 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 25%
+    maxSurge: 25%
+
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
 serviceAccount:
   # Specifies whether a service account should be created.
@@ -177,6 +183,7 @@ env:
   SLACK_SIGNING_SECRET: "replace-with-slack-signing-secret"
   GEMINI_API_KEY: ""
   LOG_LEVEL: "1"
+  MODIFY_RESOURCES: "none" # Options: none, allow, auto
 
   ## Authentication Configuration
   # SAML_IDP_METADATA_URL: ""

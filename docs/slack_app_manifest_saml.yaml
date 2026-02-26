@@ -16,19 +16,11 @@ oauth_config:
       - chat:write
       - files:write
       - reactions:write
-      - channels:history
-      - groups:history
-      - im:history
-      - mpim:history
 settings:
   event_subscriptions:
     request_url: https://your-domain.com/slack/events
-  bot_events:
-    - app_mention
-    - message.channels
-    - message.groups
-    - message.im
-    - message.mpim
+    bot_events:
+      - app_mention
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

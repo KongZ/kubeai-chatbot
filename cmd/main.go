@@ -22,7 +22,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -86,7 +85,7 @@ func run(ctx context.Context) error {
 	agentName := getEnv("AGENT_NAME", "kubeai")
 	uiType := getEnv("UI_TYPE", "slack")
 	sessionType := getEnv("SESSION_TYPE", "memory")
-	automaticModifyResources := getBoolEnv("AUTOMATIC_MODIFY_RESOURCES", true)
+	modifyResources := parseModifyResourcesMode(getEnv("MODIFY_RESOURCES", "none"))
 
 	klog.Infof("Starting kubeai-chatbot (version: %s, commit: %s, date: %s)", version, commit, date)
 	klog.Infof("Configuration: provider=%s, model=%s, listen=%s", providerID, modelID, listenAddress)
@@ -118,16 +117,16 @@ func run(ctx context.Context) error {
 		agentTools.Init()
 
 		return &agent.Agent{
-			Model:                    modelID,
-			Provider:                 providerID,
-			Kubeconfig:               kubeconfig,
-			LLM:                      client,
-			MaxIterations:            20,
-			Tools:                    agentTools,
-			Recorder:                 recorder,
-			SessionBackend:           sessionType,
-			AgentName:                agentName,
-			AutomaticModifyResources: automaticModifyResources,
+			Model:           modelID,
+			Provider:        providerID,
+			Kubeconfig:      kubeconfig,
+			LLM:             client,
+			MaxIterations:   20,
+			Tools:           agentTools,
+			Recorder:        recorder,
+			SessionBackend:  sessionType,
+			AgentName:       agentName,
+			ModifyResources: modifyResources,
 		}, nil
 	}
 
@@ -224,13 +223,12 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-func getBoolEnv(key string, defaultValue bool) bool {
-	if value := os.Getenv(key); value != "" {
-		b, err := strconv.ParseBool(value)
-		if err != nil {
-			return defaultValue
-		}
-		return b
+func parseModifyResourcesMode(value string) agent.ModifyResourcesMode {
+	switch agent.ModifyResourcesMode(strings.ToLower(value)) {
+	case agent.ModifyResourcesModeNone, agent.ModifyResourcesModeAllow, agent.ModifyResourcesModeAuto:
+		return agent.ModifyResourcesMode(strings.ToLower(value))
+	default:
+		klog.Warningf("Unknown MODIFY_RESOURCES value %q, defaulting to %q", value, agent.ModifyResourcesModeNone)
+		return agent.ModifyResourcesModeNone
 	}
-	return defaultValue
 }

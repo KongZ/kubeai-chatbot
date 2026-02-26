@@ -41,6 +41,18 @@ import (
 //go:embed systemprompt_template_default.txt
 var defaultSystemPromptTemplate string
 
+// ModifyResourcesMode controls how the agent handles resource modifications.
+type ModifyResourcesMode string
+
+const (
+	// ModifyResourcesModeNone disables all resource modification; the agent provides commands for the user to run manually.
+	ModifyResourcesModeNone ModifyResourcesMode = "none"
+	// ModifyResourcesModeAllow allows resource modification after explicit user confirmation.
+	ModifyResourcesModeAllow ModifyResourcesMode = "allow"
+	// ModifyResourcesModeAuto allows the agent to modify resources automatically without user confirmation.
+	ModifyResourcesModeAuto ModifyResourcesMode = "auto"
+)
+
 type Agent struct {
 	// Input is the channel to receive user input.
 	Input chan any
@@ -60,8 +72,9 @@ type Agent struct {
 	// AgentName is the name of the assistant.
 	AgentName string
 
-	// AutomaticModifyResources instruct agent to modify resources automatically.
-	AutomaticModifyResources bool
+	// ModifyResources controls how the agent handles resource modifications.
+	// "none" = read-only, never execute writes; "allow" = execute writes after user confirms; "auto" = execute writes automatically.
+	ModifyResources ModifyResourcesMode
 
 	// tool calls that are pending execution
 	// These will typically be all the tool calls suggested by the LLM in the
@@ -267,9 +280,9 @@ func (s *Agent) Init(ctx context.Context) error {
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
-		Tools:                    s.Tools,
-		EnableToolUseShim:        s.EnableToolUseShim,
-		AutomaticModifyResources: s.AutomaticModifyResources,
+		Tools:             s.Tools,
+		EnableToolUseShim: s.EnableToolUseShim,
+		ModifyResources:   s.ModifyResources,
 		// RunOnce is a good proxy to indicate the agentic session is non-interactive mode.
 		SessionIsInteractive: !s.RunOnce,
 		AgentName:            s.AgentName,
@@ -688,17 +701,17 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					continue // Skip execution for interactive commands
 				}
 
-				if !c.SkipPermissions && !c.AutomaticModifyResources && modifiesResourceToolCallIndex >= 0 {
-					// In RunOnce mode, exit with error if permission is required
-					if c.RunOnce || !c.AutomaticModifyResources {
+				if !c.SkipPermissions && c.ModifyResources != ModifyResourcesModeAuto && modifiesResourceToolCallIndex >= 0 {
+					// In RunOnce mode or read-only mode, block the write and return an error
+					if c.RunOnce || c.ModifyResources == ModifyResourcesModeNone {
 						var commandDescriptions []string
 						for _, call := range c.pendingFunctionCalls {
 							commandDescriptions = append(commandDescriptions, call.ParsedToolCall.Description())
 						}
 
 						var errorMessage string
-						if !c.AutomaticModifyResources {
-							errorMessage = "Automatic resource modification is DISABLED. Please provide the exact `kubectl` command in your response for the user to execute manually instead of using this tool."
+						if c.ModifyResources == ModifyResourcesModeNone {
+							errorMessage = "Resource modification is disabled (read-only mode). Provide the exact `kubectl` command in your response for the user to execute manually instead of using this tool."
 						} else {
 							errorMessage = "RunOnce mode cannot handle permission requests. The following commands require approval:\n* " + strings.Join(commandDescriptions, "\n* ")
 							errorMessage += "\nUse --skip-permissions flag to bypass permission checks in RunOnce mode."
@@ -885,11 +898,11 @@ func (c *Agent) NewSession() (string, error) {
 
 	// Create a new chat session with the new model
 	systemPrompt, err := c.generatePrompt(context.Background(), defaultSystemPromptTemplate, PromptData{
-		Tools:                    c.Tools,
-		EnableToolUseShim:        c.EnableToolUseShim,
-		AutomaticModifyResources: c.AutomaticModifyResources,
-		SessionIsInteractive:     !c.RunOnce,
-		AgentName:                c.AgentName,
+		Tools:                c.Tools,
+		EnableToolUseShim:    c.EnableToolUseShim,
+		ModifyResources:      c.ModifyResources,
+		SessionIsInteractive: !c.RunOnce,
+		AgentName:            c.AgentName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("generating system prompt for new session: %w", err)
@@ -1196,11 +1209,15 @@ type PromptData struct {
 	Query string
 	Tools tools.Tools
 
-	EnableToolUseShim        bool
-	AutomaticModifyResources bool
-	SessionIsInteractive     bool
-	AgentName                string
+	EnableToolUseShim    bool
+	ModifyResources      ModifyResourcesMode
+	SessionIsInteractive bool
+	AgentName            string
 }
+
+func (a *PromptData) IsReadOnly() bool    { return a.ModifyResources == ModifyResourcesModeNone }
+func (a *PromptData) IsAllowModify() bool { return a.ModifyResources == ModifyResourcesModeAllow }
+func (a *PromptData) IsAutoModify() bool  { return a.ModifyResources == ModifyResourcesModeAuto }
 
 func (a *PromptData) ToolsAsJSON() string {
 	var toolDefinitions []*gollm.FunctionDefinition

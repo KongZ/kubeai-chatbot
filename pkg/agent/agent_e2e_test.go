@@ -151,8 +151,8 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 		LLM:                      client,
 		Model:                    "test-model",
 		Tools:                    toolset,
-		MaxIterations:            4,
-		AutomaticModifyResources: true,
+		MaxIterations:   4,
+		ModifyResources: ModifyResourcesModeAuto,
 		Session: &api.Session{
 			ID:               "test-session",
 			Name:             "Test Session",
@@ -186,14 +186,7 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 	// Send a query (UI -> Agent)
 	a.Input <- &api.UserInputResponse{Query: "test"}
 
-	// In the old behavior, this was MessageTypeUserChoiceRequest.
-	// Since we set AutomaticModifyResources=true, it should skip the choice and go straight to tool call.
-	// However, if we want to test the SKIP logic, we should probably set SkipPermissions=true.
-	// Wait, my change at line 652 in conversation.go was:
-	// if !c.SkipPermissions && !c.AutomaticModifyResources && modifiesResourceToolCallIndex >= 0 {
-	// So if AutomaticModifyResources=true, it skips the choice request block.
-
-	// So let's skip the choiceMsg recv and expect tool calls.
+	// Since ModifyResources=auto, the agent skips the confirmation dialog and goes straight to tool call.
 
 	// Expect tool invocation messages and final response.
 	sawToolReq, sawToolResp, sawFinal := false, false, false
@@ -371,8 +364,8 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 		LLM:                      client,
 		Model:                    "test-model",
 		Tools:                    toolset,
-		MaxIterations:            4,
-		AutomaticModifyResources: false, // EXPLICITLY DISABLED
+		MaxIterations:   4,
+		ModifyResources: ModifyResourcesModeNone, // EXPLICITLY DISABLED
 		Session: &api.Session{
 			ID:               "test-session",
 			Name:             "Test Session",
