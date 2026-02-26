@@ -27,6 +27,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/gollm"
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"mvdan.cc/sh/v3/shell"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 var (
@@ -202,5 +203,28 @@ func validateKubectlCommand(command string) error {
 	if strings.Contains(command, "kubectl port-forward") {
 		return fmt.Errorf("port-forwarding is not allowed, please try some other alternative")
 	}
+	if isCompoundCommand(command) {
+		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not supported. Use a single standalone kubectl command instead")
+	}
 	return nil
+}
+
+// isCompoundCommand returns true if the shell-parsed command contains any pipe or
+// chaining operators (|, &&, ||, ;). These are unsupported because the tool
+// executes kubectl directly without a shell, so they would fail at runtime.
+func isCompoundCommand(command string) bool {
+	parser := syntax.NewParser()
+	file, err := parser.Parse(strings.NewReader(command), "")
+	if err != nil {
+		return false
+	}
+	compound := false
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if _, ok := node.(*syntax.BinaryCmd); ok {
+			compound = true
+			return false
+		}
+		return true
+	})
+	return compound
 }
