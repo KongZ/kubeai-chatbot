@@ -189,7 +189,8 @@ func TestMarkdownToBlocks(t *testing.T) {
 }
 
 // TestIsComplexOrLong verifies the logic that determines whether a message should be uploaded
-// as a file snippet instead of posted directly. Tests length limits and code block detection.
+// as a file snippet instead of posted directly. Only messages exceeding 3000 characters are
+// considered complex; code blocks alone no longer force snippet upload.
 func TestIsComplexOrLong(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -206,16 +207,15 @@ func TestIsComplexOrLong(t *testing.T) {
 			input:    strings.Repeat("a", 3001),
 			expected: true,
 		},
-		// Table detection removed from IsComplexOrLong for short tables
 		{
-			name:     "table detection",
+			name:     "table",
 			input:    "| Name | Age |\n|---|---|\n| Foo | 20 |",
 			expected: false,
 		},
 		{
-			name:     "long code block",
+			name:     "text with code blocks under 3000 chars is not complex",
 			input:    "Here is code:\n```go\nfunc main() {}\n```\n" + strings.Repeat("x", 1000),
-			expected: true,
+			expected: false, // code blocks alone no longer trigger snippet upload
 		},
 		{
 			name:     "short code block",
@@ -1158,6 +1158,163 @@ func TestFormatForSlack_More(t *testing.T) {
 				t.Errorf("expected %q, got %q", tt.expected, actual)
 			}
 		})
+	}
+}
+
+// TestMarkdownToBlocksWithCodeBlockAndDivider verifies that a multi-section diagnostic response
+// containing code blocks, horizontal rules, numbered lists, blockquotes, bash commands, and a
+// summary table is correctly converted to Slack blocks without being routed to snippet upload.
+//
+// Block layout expected from the input:
+//
+//	[0]  SectionBlock  – opening paragraph
+//	[1]  HeaderBlock   – "Analysis of the Issue"
+//	[2]  SectionBlock  – numbered list items (text before first code block)
+//	[3]  SectionBlock  – log snippet code block (``` … ```)
+//	[4]  SectionBlock  – trailing sentence after the log snippet
+//	[5]  DividerBlock  – from the "---" horizontal rule
+//	[6]  HeaderBlock   – "Recommended Fix"
+//	[7]  SectionBlock  – fix description paragraph
+//	[8]  SectionBlock  – bash command code block (``` … ```)
+//	[9]  HeaderBlock   – "Summary of Findings"
+//	[10] TableBlock    – component status table
+func TestMarkdownToBlocksWithCodeBlockAndDivider(t *testing.T) {
+	s := &SlackUI{}
+
+	input := "The `example-component` on cluster `k8s-test-cluster` is broken" +
+		" due to a **failed upgrade** and an **application crash**.\n" +
+		"\n" +
+		"### Analysis of the Issue\n" +
+		"\n" +
+		"1.  **Stuck Upgrade**: The HelmRelease has been failing.\n" +
+		"    > `Deployment.apps \"example-component\" is invalid: may not specify more than 1 handler type`\n" +
+		"    This occurs because the cluster has **gRPC probes** but the chart wants **TCP probes**.\n" +
+		"\n" +
+		"2.  **Stale Configuration**: The Deployment is stuck on image `img-abc123`" +
+		" and is missing `EXAMPLE_LOGGING_ENABLED`.\n" +
+		"\n" +
+		"3.  **Application Crash**: Pods are in `CrashLoopBackOff` with **Exit Code 2**. Logs show:\n" +
+		"```\n" +
+		"[example-app] WARNING: EXAMPLE_LOGGING_ENABLED is not defined\n" +
+		"```\n" +
+		"The liveness probes are also failing with `context deadline exceeded`.\n" +
+		"\n" +
+		"---\n" +
+		"\n" +
+		"### Recommended Fix\n" +
+		"\n" +
+		"Delete the deployment and let the controller recreate it.\n" +
+		"\n" +
+		"```bash\n" +
+		"kubectl delete deployment example-component -n example-ns --context k8s-test-cluster\n" +
+		"```\n" +
+		"\n" +
+		"### Summary of Findings\n" +
+		"| Component | Status | Issue |\n" +
+		"| :--- | :--- | :--- |\n" +
+		"| `example-component` | `CrashLoopBackOff` | Probe conflict blocking upgrade. |\n" +
+		"| `other-component` | `Running` | Working correctly. |\n"
+
+	// The text has two code blocks but is well under 3000 chars:
+	// it must NOT be routed to snippet upload after the fix.
+	if isComplexOrLong(input) {
+		t.Errorf("isComplexOrLong(%d chars with code blocks) = true, want false; "+
+			"code blocks should no longer force snippet upload", len(input))
+	}
+
+	blocks := s.markdownToBlocks(input)
+
+	const wantBlocks = 11
+	if len(blocks) != wantBlocks {
+		types := make([]string, len(blocks))
+		for i, b := range blocks {
+			types[i] = string(b.BlockType())
+		}
+		t.Fatalf("expected %d blocks, got %d: %v", wantBlocks, len(blocks), types)
+	}
+
+	// [0] intro paragraph
+	if _, ok := blocks[0].(*slack.SectionBlock); !ok {
+		t.Errorf("block[0]: want SectionBlock, got %T", blocks[0])
+	}
+
+	// [1] "Analysis of the Issue" header (emoji stripped)
+	if hb, ok := blocks[1].(*slack.HeaderBlock); !ok {
+		t.Errorf("block[1]: want HeaderBlock, got %T", blocks[1])
+	} else if hb.Text.Text != "Analysis of the Issue" {
+		t.Errorf("block[1]: header text = %q, want %q", hb.Text.Text, "Analysis of the Issue")
+	}
+
+	// [2] numbered list items (text flushed before first code block)
+	if sb, ok := blocks[2].(*slack.SectionBlock); !ok {
+		t.Errorf("block[2]: want SectionBlock, got %T", blocks[2])
+	} else if !strings.Contains(sb.Text.Text, "Stuck Upgrade") {
+		t.Errorf("block[2]: expected numbered list content, got %q", sb.Text.Text)
+	}
+
+	// [3] log snippet — must be a SectionBlock whose text is a fenced code block
+	if sb, ok := blocks[3].(*slack.SectionBlock); !ok {
+		t.Errorf("block[3]: want SectionBlock (log code block), got %T", blocks[3])
+	} else {
+		if !strings.HasPrefix(sb.Text.Text, "```") {
+			t.Errorf("block[3]: code block should start with ```, got %q", sb.Text.Text)
+		}
+		if !strings.Contains(sb.Text.Text, "EXAMPLE_LOGGING_ENABLED") {
+			t.Errorf("block[3]: expected log content, got %q", sb.Text.Text)
+		}
+	}
+
+	// [4] trailing sentence after the log snippet
+	if sb, ok := blocks[4].(*slack.SectionBlock); !ok {
+		t.Errorf("block[4]: want SectionBlock, got %T", blocks[4])
+	} else if !strings.Contains(sb.Text.Text, "liveness probes") {
+		t.Errorf("block[4]: expected liveness probe text, got %q", sb.Text.Text)
+	}
+
+	// [5] divider from "---"
+	if blocks[5].BlockType() != slack.MBTDivider {
+		t.Errorf("block[5]: want DividerBlock, got %T (%s)", blocks[5], blocks[5].BlockType())
+	}
+
+	// [6] "Recommended Fix" header
+	if hb, ok := blocks[6].(*slack.HeaderBlock); !ok {
+		t.Errorf("block[6]: want HeaderBlock, got %T", blocks[6])
+	} else if hb.Text.Text != "Recommended Fix" {
+		t.Errorf("block[6]: header text = %q, want %q", hb.Text.Text, "Recommended Fix")
+	}
+
+	// [7] fix description paragraph
+	if _, ok := blocks[7].(*slack.SectionBlock); !ok {
+		t.Errorf("block[7]: want SectionBlock, got %T", blocks[7])
+	}
+
+	// [8] bash command — fenced code block section
+	if sb, ok := blocks[8].(*slack.SectionBlock); !ok {
+		t.Errorf("block[8]: want SectionBlock (bash code block), got %T", blocks[8])
+	} else {
+		if !strings.HasPrefix(sb.Text.Text, "```") {
+			t.Errorf("block[8]: bash code block should start with ```, got %q", sb.Text.Text)
+		}
+		if !strings.Contains(sb.Text.Text, "kubectl delete deployment") {
+			t.Errorf("block[8]: expected kubectl command, got %q", sb.Text.Text)
+		}
+	}
+
+	// [9] "Summary of Findings" header
+	if hb, ok := blocks[9].(*slack.HeaderBlock); !ok {
+		t.Errorf("block[9]: want HeaderBlock, got %T", blocks[9])
+	} else if hb.Text.Text != "Summary of Findings" {
+		t.Errorf("block[9]: header text = %q, want %q", hb.Text.Text, "Summary of Findings")
+	}
+
+	// [10] summary table
+	if tb, ok := blocks[10].(*TableBlock); !ok {
+		t.Errorf("block[10]: want TableBlock, got %T", blocks[10])
+	} else {
+		// header row + 2 data rows
+		if len(tb.Rows) != 3 {
+			t.Errorf("block[10]: table rows = %d, want 3 (1 header + 2 data)", len(tb.Rows))
+		}
 	}
 }
 
