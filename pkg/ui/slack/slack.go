@@ -561,7 +561,9 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 
 	var currentParagraph []string
 	var tableLines []string
+	var codeBlockLines []string
 	inTable := false
+	inCodeBlock := false
 
 	flushParagraph := func() {
 		if len(currentParagraph) > 0 {
@@ -600,8 +602,49 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 		}
 	}
 
+	flushCodeBlock := func() {
+		if len(codeBlockLines) > 0 {
+			content := strings.Join(codeBlockLines, "\n")
+			blocks = append(blocks, slack.NewSectionBlock(
+				slack.NewTextBlockObject(slack.MarkdownType, "```\n"+content+"\n```", false, false),
+				nil, nil,
+			))
+		}
+		codeBlockLines = nil
+		inCodeBlock = false
+	}
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+
+		// Handle code block delimiters (``` or ```lang)
+		if strings.HasPrefix(trimmed, "```") {
+			if !inCodeBlock {
+				flushTable()
+				flushParagraph()
+				inTable = false
+				inCodeBlock = true
+				codeBlockLines = []string{}
+			} else {
+				flushCodeBlock()
+			}
+			continue
+		}
+
+		// Collect code block content as-is
+		if inCodeBlock {
+			codeBlockLines = append(codeBlockLines, line)
+			continue
+		}
+
+		// Handle horizontal rule (--- or more dashes on their own line)
+		if len(trimmed) >= 3 && strings.TrimLeft(trimmed, "-") == "" {
+			flushTable()
+			flushParagraph()
+			inTable = false
+			blocks = append(blocks, slack.NewDividerBlock())
+			continue
+		}
 
 		// Check for headers (e.g., # Header, ## Header, ### Header)
 		isHeader := strings.HasPrefix(trimmed, "# ") || strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "### ")
@@ -652,6 +695,9 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	}
 
 	// Final flushes
+	if inCodeBlock {
+		flushCodeBlock()
+	}
 	if inTable {
 		hasSeparator := false
 		for _, tl := range tableLines {
@@ -1001,12 +1047,5 @@ func formatForSlack(text string) string {
 }
 
 func isComplexOrLong(text string) bool {
-	if len(text) > 3000 {
-		return true
-	}
-	// Detect long code blocks
-	if strings.Count(text, "```") >= 2 && len(text) > 1000 {
-		return true
-	}
-	return false
+	return len(text) > 3000
 }
