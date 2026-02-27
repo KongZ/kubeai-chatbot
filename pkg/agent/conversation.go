@@ -497,7 +497,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				if c.currIteration >= c.MaxIterations {
 					c.setAgentState(api.AgentStateDone)
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
-					c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Maximum number of iterations reached.")
+					c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Maximum number of iterations reached. You can help me by providing more specific input. Or If you’d like me to continue with the previous attempt, let me know.")
 					continue
 				}
 

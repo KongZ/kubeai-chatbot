@@ -251,6 +251,12 @@ func IsInteractiveCommand(command string) (bool, error) {
 		return false, nil
 	}
 
+	// Reject compound commands (pipes, &&, ||, ;) before they reach execution
+	// so they are never displayed to the user as a pending tool call.
+	if isCompoundCommand(command) {
+		return true, fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not supported. Use a single standalone kubectl command instead")
+	}
+
 	isExec := strings.Contains(command, " exec ") && strings.Contains(command, " -it")
 	isPortForward := strings.Contains(command, " port-forward ")
 	isEdit := strings.Contains(command, " edit ")

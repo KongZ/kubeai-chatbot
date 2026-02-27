@@ -218,6 +218,10 @@ func isCompoundCommand(command string) bool {
 	if err != nil {
 		return false
 	}
+	// Semicolons produce multiple top-level Stmt nodes rather than a BinaryCmd.
+	if len(file.Stmts) > 1 {
+		return true
+	}
 	compound := false
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if _, ok := node.(*syntax.BinaryCmd); ok {
