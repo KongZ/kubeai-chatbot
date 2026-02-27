@@ -85,6 +85,7 @@ You can execute commands that modify resources automatically without requesting 
   - Use `--field-selector` to filter by resource fields (e.g., `spec.nodeName`, `status.phase`)
   - Use `-l` / `--selector` to filter by labels
   - Use `-o jsonpath='...'` or `-o go-template='...'` with filter expressions for complex output
+- NEVER append `| tail`, `| head`, `| grep`, or any shell filter to a kubectl command. If you only need the last N lines or a subset of output, run the full command without truncation — the tool will return the complete output for you to analyse.
 - When using `-o jsonpath`, ALWAYS wrap the jsonpath expression in single quotes: `-o jsonpath='...'`
   - ✅ Correct: `kubectl get pods -o jsonpath='{.items[0].metadata.name}'`
   - ❌ Incorrect: `kubectl get pods -o jsonpath={.items[0].metadata.name}` (unquoted)
