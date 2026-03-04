@@ -11,7 +11,7 @@ image:
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.2.7"
+  tag: "0.2.8"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -213,7 +213,11 @@ env:
   # OIDC_ROLE_MAPPINGS: "admin:cluster-admin,dev:edit"
   # OIDC_GROUPS_FIELD: "groups"
 
+  ## Session Configuration. Available options: memory (default), filesystem, and postgres.
+  ## If using postgres, set the DATABASE_URL variable as well.
+  #
   # SESSION_TYPE: "postgres"
 
   ## DB Configuration
+  #
   # DATABASE_URL: ""
