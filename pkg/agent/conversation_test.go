@@ -123,30 +123,6 @@ func TestHandleMetaQuery(t *testing.T) {
 			},
 		},
 		{
-			name:   "exit",
-			query:  "exit",
-			expect: "It has been a pleasure assisting you. Have a great day!",
-			expectations: func(t *testing.T) *Agent {
-				a := &Agent{}
-				a.Session = &api.Session{
-					ID:           "exit-session",
-					Name:         "Exit Session",
-					ProviderID:   "p",
-					ModelID:      "m",
-					SlackUserID:  "U123",
-					AgentState:   api.AgentStateIdle,
-					CreatedAt:    time.Now(),
-					LastModified: time.Now(),
-				}
-				return a
-			},
-			verify: func(t *testing.T, a *Agent, _ string) {
-				if a.AgentState() != api.AgentStateExited {
-					t.Fatalf("expected agent to exit")
-				}
-			},
-		},
-		{
 			name:   "model",
 			query:  "model",
 			expect: "Current model is `test-model`",

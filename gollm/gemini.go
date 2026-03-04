@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"google.golang.org/genai"
@@ -263,9 +264,17 @@ func (c *GoogleAIClient) StartChat(systemPrompt string, model string) Chat {
 	topP := float32(0.95)
 	maxOutputTokens := int32(8192)
 
+	maxHistoryItems := 0
+	if v := os.Getenv("LLM_MAX_HISTORY_ITEMS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxHistoryItems = n
+		}
+	}
+
 	chat := &GeminiChat{
-		model:  model,
-		client: c.client,
+		model:           model,
+		client:          c.client,
+		maxHistoryItems: maxHistoryItems,
 		genConfig: &genai.GenerateContentConfig{
 			SystemInstruction: &genai.Content{
 				Parts: []*genai.Part{
@@ -305,6 +314,13 @@ type GeminiChat struct {
 	client    *genai.Client
 	history   []*genai.Content
 	genConfig *genai.GenerateContentConfig
+
+	// maxHistoryItems limits how many history entries are sent per request.
+	// 0 means unlimited. Configured via LLM_MAX_HISTORY_ITEMS env var.
+	maxHistoryItems int
+
+	// wasTruncated is set to true when history was trimmed during the last Send/SendStreaming call.
+	wasTruncated bool
 }
 
 // SetFunctionDefinitions sets the function definitions for the chat.
@@ -398,6 +414,66 @@ func (c *GeminiChat) partsToGemini(contents ...any) ([]*genai.Part, error) {
 	return parts, nil
 }
 
+// WasTruncated returns true if history was trimmed during the last Send or SendStreaming call.
+func (c *GeminiChat) WasTruncated() bool {
+	return c.wasTruncated
+}
+
+// trimHistory trims c.history so that after the caller appends the incoming
+// user message the slice sent to GenerateContent has at most maxHistoryItems
+// entries. It must be called before appending the new user message.
+// It removes the oldest user/model pairs first, preserving any system-prompt
+// entry at index 0 for models that embed the system prompt in history (e.g. gemma-3).
+// wasTruncated is set to true if any entries were removed, false otherwise.
+func (c *GeminiChat) trimHistory() {
+	c.wasTruncated = false
+	// Reserve one slot for the incoming user message so that after append
+	// len(history) <= maxHistoryItems holds when GenerateContent is called.
+	target := c.maxHistoryItems - 1
+	if c.maxHistoryItems <= 0 || len(c.history) <= target {
+		return
+	}
+
+	// For models that embed the system prompt as history[0] (e.g. gemma-3-27b-it),
+	// SystemInstruction will be nil. Preserve that entry.
+	prefix := 0
+	if c.genConfig.SystemInstruction == nil && len(c.history) > 0 {
+		prefix = 1
+	}
+
+	excess := len(c.history) - target
+	// Align to pairs so user/model alternation is preserved.
+	if excess%2 != 0 {
+		excess++
+	}
+
+	available := len(c.history) - prefix
+	if excess >= available {
+		// Cannot trim enough while keeping the prefix — trim as much as possible.
+		// Prefer an even count to preserve user/model alternation, but if rounding
+		// down would produce zero trims (e.g. available==1), accept the odd trim so
+		// the cap is still enforced as tightly as possible.
+		excess = available
+		if excess%2 != 0 {
+			excess-- // try even
+			if excess <= 0 {
+				excess = available // fall back to odd trim
+			}
+		}
+	}
+
+	if excess <= 0 {
+		return
+	}
+
+	newHistory := make([]*genai.Content, 0, len(c.history)-excess)
+	newHistory = append(newHistory, c.history[:prefix]...)
+	newHistory = append(newHistory, c.history[prefix+excess:]...)
+	klog.V(3).Infof("trimHistory: trimmed %d history items (kept %d of %d)", excess, len(newHistory), len(c.history))
+	c.history = newHistory
+	c.wasTruncated = true
+}
+
 // Send sends a message to the model.
 // It returns a ChatResponse object containing the response from the model.
 func (c *GeminiChat) Send(ctx context.Context, contents ...any) (ChatResponse, error) {
@@ -414,6 +490,7 @@ func (c *GeminiChat) Send(ctx context.Context, contents ...any) (ChatResponse, e
 		Parts: parts,
 	}
 
+	c.trimHistory()
 	c.history = append(c.history, genaiContent)
 	result, err := c.client.Models.GenerateContent(ctx, c.model, c.history, c.genConfig)
 	if err != nil {
@@ -442,6 +519,7 @@ func (c *GeminiChat) SendStreaming(ctx context.Context, contents ...any) (ChatRe
 		Parts: parts,
 	}
 
+	c.trimHistory()
 	c.history = append(c.history, genaiContent)
 	stream := c.client.Models.GenerateContentStream(ctx, c.model, c.history, c.genConfig)
 

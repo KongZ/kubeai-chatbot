@@ -527,6 +527,8 @@ func (c *bedrockChat) IsRetryableError(err error) bool {
 	return DefaultIsRetryableError(err)
 }
 
+func (c *bedrockChat) WasTruncated() bool { return false }
+
 // bedrockResponse implements ChatResponse for regular (non-streaming) responses
 type bedrockResponse struct {
 	output *bedrockruntime.ConverseOutput

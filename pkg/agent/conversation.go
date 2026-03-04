@@ -573,10 +573,27 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					log.Error(llmError, "error streaming LLM response")
 					c.setAgentState(api.AgentStateDone)
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
-					c.addMessage(api.MessageSourceAgent, api.MessageTypeError, "Error: "+llmError.Error())
+					if isContextLengthExceededError(llmError) {
+						if c.llmChat.WasTruncated() {
+							c.addMessage(api.MessageSourceAgent, api.MessageTypeError,
+								"The conversation history is too large to process, even after truncating older messages. Please start a new session by typing `clear`.")
+						} else {
+							c.addMessage(api.MessageSourceAgent, api.MessageTypeError,
+								"The conversation history is too large to process. Please start a new session by typing `clear`.")
+						}
+					} else {
+						c.addMessage(api.MessageSourceAgent, api.MessageTypeError, "Error: "+llmError.Error())
+					}
 					c.lastErr = llmError
 					continue
 				}
+
+				// Notify the user if older history entries were dropped to stay within context limits.
+				if c.llmChat.WasTruncated() {
+					c.addMessage(api.MessageSourceAgent, api.MessageTypeText,
+						"_Note: Some earlier conversation history has been truncated to stay within the model's context limit. Older context may not be available._")
+				}
+
 				log.V(2).Info("streamedText", "streamedText", streamedText)
 
 				if streamedText != "" {
@@ -730,6 +747,12 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 	return nil
 }
 
+// isContextLengthExceededError returns true when the LLM rejected the request
+// because the input token count exceeded the model's maximum context window.
+func isContextLengthExceededError(err error) bool {
+	return strings.Contains(err.Error(), "input token count exceeds")
+}
+
 func (c *Agent) handleMetaQuery(ctx context.Context, query string) (answer string, handled bool, err error) {
 	switch query {
 	case "clear", "reset":
@@ -743,9 +766,6 @@ func (c *Agent) handleMetaQuery(ctx context.Context, query string) (answer strin
 		}
 		c.sessionMu.Unlock()
 		return "Cleared the conversation.", true, nil
-	case "exit", "quit":
-		c.setAgentState(api.AgentStateExited)
-		return "It has been a pleasure assisting you. Have a great day!", true, nil
 	case "model":
 		return "Current model is `" + c.Model + "`", true, nil
 	case "models":
@@ -757,17 +777,10 @@ func (c *Agent) handleMetaQuery(ctx context.Context, query string) (answer strin
 	case "tools":
 		return "Available tools:\n\n  - " + strings.Join(c.Tools.Names(), "\n  - ") + "\n\n", true, nil
 	case "session":
-		if c.SessionBackend != "filesystem" {
+		if c.SessionBackend == "memory" {
 			return "Ephemeral session (memory backed). No persistent info available.", true, nil
 		}
 		return fmt.Sprintf("Current session:\n\n%s", c.Session.String()), true, nil
-
-	case "save-session":
-		savedSessionID, err := c.SaveSession()
-		if err != nil {
-			return "", false, fmt.Errorf("failed to save session: %w", err)
-		}
-		return "Saved session as " + savedSessionID, true, nil
 
 	case "sessions":
 		mgr, err := c.getSessionManager()

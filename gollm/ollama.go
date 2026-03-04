@@ -214,6 +214,8 @@ func (c *OllamaChat) Initialize(messages []*kctlApi.Message) error {
 	return nil
 }
 
+func (c *OllamaChat) WasTruncated() bool { return false }
+
 type OllamaChatResponse struct {
 	candidates     []*OllamaCandidate
 	ollamaResponse api.ChatResponse

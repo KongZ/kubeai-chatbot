@@ -57,24 +57,25 @@ The easiest way to set up your Slack app is using the provided manifest:
 
 ### General Application Settings
 
-| Variable                     | Description                                       | Default              |
-| :--------------------------- | :------------------------------------------------ | :------------------- |
-| `SLACK_BOT_TOKEN`            | Slack Bot User OAuth Token                        | Required             |
-| `SLACK_SIGNING_SECRET`       | Slack app Signing Secret                          | Required             |
-| `MODIFY_RESOURCES`           | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md)) | `none` |
-| `KUBECONFIG`                 | Path to your kubeconfig file                      | `$HOME/.kube/config` |
-| `LISTEN_ADDRESS`             | Address for the bot to listen on                  | `0.0.0.0:8888`       |
-| `AUTH_METHOD`                | Auth method (`SAML`, `OIDC`, or `NONE`)           | `NONE`               |
-| `SESSION_TYPE`               | Session storage (`postgres`, `file`, `memory`)    | `memory`             |
-| `LOG_LEVEL`                  | Verbosity of logs (e.g., `2` for info)            | `1`                  |
+| Variable               | Description                                                                                                   | Default              |
+| :--------------------- | :------------------------------------------------------------------------------------------------------------ | :------------------- |
+| `SLACK_BOT_TOKEN`      | Slack Bot User OAuth Token                                                                                    | Required             |
+| `SLACK_SIGNING_SECRET` | Slack app Signing Secret                                                                                      | Required             |
+| `MODIFY_RESOURCES`     | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md)) | `none`               |
+| `KUBECONFIG`           | Path to your kubeconfig file                                                                                  | `$HOME/.kube/config` |
+| `LISTEN_ADDRESS`       | Address for the bot to listen on                                                                              | `0.0.0.0:8888`       |
+| `AUTH_METHOD`          | Auth method (`SAML`, `OIDC`, or `NONE`)                                                                       | `NONE`               |
+| `SESSION_TYPE`         | Session storage (`postgres`, `filesystem`, `memory`)                                                                | `memory`             |
+| `LOG_LEVEL`            | Verbosity of logs (e.g., `2` for info)                                                                        | `1`                  |
 
 ### General LLM Settings
 
-| Variable              | Description                                              | Default                  |
-| :-------------------- | :------------------------------------------------------- | :----------------------- |
-| `LLM_PROVIDER`        | Legacy LLM service provider (`gemini`, `openai`)         | `gemini`                 |
-| `MODEL_ID`            | Specific LLM model to use                                | `gemini-3-flash-preview` |
-| `LLM_SKIP_VERIFY_SSL` | Skip SSL certificate verification (set to `1` or `true`) | `false`                  |
+| Variable                | Description                                                                                                                                                        | Default                  |
+| :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------- |
+| `LLM_PROVIDER`          | Legacy LLM service provider (`gemini`, `openai`)                                                                                                                   | `gemini`                 |
+| `MODEL_ID`              | Specific LLM model to use                                                                                                                                          | `gemini-3-flash-preview` |
+| `LLM_SKIP_VERIFY_SSL`   | Skip SSL certificate verification (set to `1` or `true`)                                                                                                           | `false`                  |
+| `LLM_MAX_HISTORY_ITEMS` | Maximum number of conversation history entries sent per request. `0` disables the limit. See [Context Management](docs/context_management.md) for sizing guidance. | `0` (unlimited)          |
 
 ### OpenAI Configuration
 
@@ -151,6 +152,7 @@ KubeAI Chatbot is built with safety as a priority:
 
   - [System Architecture](docs/architecture.md)
   - [Modification Modes](docs/modification_modes.md)
+  - [Context Management](docs/context_management.md)
   - [Session Storage Setup](docs/session_storage.md)
   - [SAML Authentication Setup](docs/auth_saml.md)
   - [OIDC Authentication Setup](docs/auth_oidc.md)

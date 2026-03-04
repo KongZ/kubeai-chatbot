@@ -133,6 +133,7 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(firstIter, nil),
 		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(secondIter, nil),
 	)
+	chat.EXPECT().WasTruncated().Return(false).AnyTimes()
 
 	tool := mocks.NewMockTool(ctrl)
 	tool.EXPECT().Name().Return("mocktool").AnyTimes()
@@ -346,6 +347,7 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(firstIter, nil),
 		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(secondIter, nil),
 	)
+	chat.EXPECT().WasTruncated().Return(false).AnyTimes()
 
 	tool := mocks.NewMockTool(ctrl)
 	tool.EXPECT().Name().Return("mocktool").AnyTimes()

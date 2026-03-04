@@ -275,6 +275,8 @@ func (c *AzureOpenAIChat) Initialize(messages []*api.Message) error {
 	return nil
 }
 
+func (c *AzureOpenAIChat) WasTruncated() bool { return false }
+
 func (c *AzureOpenAIChat) SendStreaming(ctx context.Context, contents ...any) (ChatResponseIterator, error) {
 	// TODO: Implement streaming
 	response, err := c.Send(ctx, contents...)
