@@ -28,19 +28,19 @@ Each interaction adds items to the conversation history in the following pattern
 
 In practice:
 
-- **Simple Q&A** (no tools): **2 items** per exchange
-- **Question + 1 `kubectl` call**: **4 items** per exchange
-- **Question + 3 `kubectl` calls** (typical deep investigation): **8 items** per exchange
+  - **Simple Q&A** (no tools): **2 items** per exchange
+  - **Question + 1 `kubectl` call**: **4 items** per exchange
+  - **Question + 3 `kubectl` calls** (typical deep investigation): **8 items** per exchange
 
 ### Trimming behavior
 
 When the history length exceeds `LLM_MAX_HISTORY_ITEMS` before a request:
 
-1. The oldest **pairs** of entries (user + model) are removed first, so the alternating user/model sequence is always preserved.
-2. The bot sends a Slack notification to the user:
-   > *Note: Some earlier conversation history has been truncated to stay within the model's context limit. Older context may not be available.*
-3. If the history is still too large even after trimming (e.g. a single message is enormous), the bot tells the user:
-   > *The conversation history is too large to process, even after truncating older messages. Please start a new session by typing `clear`.*
+  1. The oldest **pairs** of entries (user + model) are removed first, so the alternating user/model sequence is always preserved.
+  2. The bot sends a Slack notification to the user:
+    > *Note: Some earlier conversation history has been truncated to stay within the model's context limit. Older context may not be available.*
+  3. If the history is still too large even after trimming (e.g. a single message is enormous), the bot tells the user:
+    > *The conversation history is too large to process, even after truncating older messages. Please start a new session by typing `clear`.*
 
 ## Sizing guide
 
@@ -86,7 +86,7 @@ The LLM loses the very first exchange but retains the most recent context needed
 
 **Environment variable:**
 
-```
+```shell
 LLM_MAX_HISTORY_ITEMS=50
 ```
 
