@@ -183,7 +183,10 @@ env:
   SLACK_SIGNING_SECRET: "replace-with-slack-signing-secret"
   GEMINI_API_KEY: ""
   LOG_LEVEL: "1"
-  MODIFY_RESOURCES: "none" # Options: none, allow, auto
+  ## Resource modification mode for kubectl operations.
+  ## Options: none, allow, auto
+  #
+  MODIFY_RESOURCES: "none"
 
   ## Context window management (Gemini / Vertex AI only)
   ## LLM_MAX_HISTORY_ITEMS controls how many conversation history entries are sent
