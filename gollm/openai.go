@@ -469,6 +469,8 @@ func (cs *openAIChatSession) Initialize(messages []*api.Message) error {
 	return nil
 }
 
+func (cs *openAIChatSession) WasTruncated() bool { return false }
+
 // Helper structs for ChatResponse interface
 
 type openAIChatResponse struct {

@@ -219,3 +219,17 @@ func (mr *MockChatMockRecorder) SetFunctionDefinitions(functionDefinitions any) 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetFunctionDefinitions", reflect.TypeOf((*MockChat)(nil).SetFunctionDefinitions), functionDefinitions)
 }
+
+// WasTruncated mocks base method.
+func (m *MockChat) WasTruncated() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WasTruncated")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// WasTruncated indicates an expected call of WasTruncated.
+func (mr *MockChatMockRecorder) WasTruncated() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WasTruncated", reflect.TypeOf((*MockChat)(nil).WasTruncated))
+}

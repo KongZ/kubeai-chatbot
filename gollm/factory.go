@@ -346,3 +346,7 @@ func (rc *retryChat[C]) IsRetryableError(err error) bool {
 func (rc *retryChat[C]) Initialize(messages []*api.Message) error {
 	return rc.underlying.Initialize(messages)
 }
+
+func (rc *retryChat[C]) WasTruncated() bool {
+	return rc.underlying.WasTruncated()
+}

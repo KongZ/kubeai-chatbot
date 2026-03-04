@@ -300,6 +300,8 @@ func (c *LlamaCppChat) Initialize(messages []*api.Message) error {
 	return nil
 }
 
+func (c *LlamaCppChat) WasTruncated() bool { return false }
+
 func ptrTo[T any](t T) *T {
 	return &t
 }

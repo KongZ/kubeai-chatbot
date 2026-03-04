@@ -185,7 +185,19 @@ env:
   LOG_LEVEL: "1"
   MODIFY_RESOURCES: "none" # Options: none, allow, auto
 
+  ## Context window management (Gemini / Vertex AI only)
+  ## LLM_MAX_HISTORY_ITEMS controls how many conversation history entries are sent
+  ## to the model per request. When a session grows long (many kubectl calls with
+  ## large output), the total token count can exceed the model's context limit.
+  ## Setting this to a positive integer trims the oldest turn-pairs automatically.
+  ## The bot notifies the user in Slack when trimming occurs.
+  ## Recommended starting point: 50 (≈12 questions each with one tool call).
+  ## See docs/context_management.md for sizing details.
+  #
+  # LLM_MAX_HISTORY_ITEMS: "50"
+
   ## Authentication Configuration
+  #
   # SAML_IDP_METADATA_URL: ""
   # SAML_ENTITY_ID: ""
   # SAML_ROOT_URL: ""

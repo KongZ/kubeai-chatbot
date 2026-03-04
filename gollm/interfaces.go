@@ -62,6 +62,9 @@ type Chat interface {
 
 	// Initialize initializes the chat with a previous conversation history.
 	Initialize(messages []*api.Message) error
+
+	// WasTruncated returns true if the history was truncated during the last Send or SendStreaming call.
+	WasTruncated() bool
 }
 
 // CompletionRequest is a request to generate a completion for a given prompt.
