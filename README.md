@@ -65,7 +65,7 @@ The easiest way to set up your Slack app is using the provided manifest:
 | `KUBECONFIG`           | Path to your kubeconfig file                                                                                  | `$HOME/.kube/config` |
 | `LISTEN_ADDRESS`       | Address for the bot to listen on                                                                              | `0.0.0.0:8888`       |
 | `AUTH_METHOD`          | Auth method (`SAML`, `OIDC`, or `NONE`)                                                                       | `NONE`               |
-| `SESSION_TYPE`         | Session storage (`postgres`, `file`, `memory`)                                                                | `memory`             |
+| `SESSION_TYPE`         | Session storage (`postgres`, `filesystem`, `memory`)                                                                | `memory`             |
 | `LOG_LEVEL`            | Verbosity of logs (e.g., `2` for info)                                                                        | `1`                  |
 
 ### General LLM Settings

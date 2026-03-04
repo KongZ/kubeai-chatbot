@@ -419,13 +419,18 @@ func (c *GeminiChat) WasTruncated() bool {
 	return c.wasTruncated
 }
 
-// trimHistory trims c.history to at most maxHistoryItems entries.
+// trimHistory trims c.history so that after the caller appends the incoming
+// user message the slice sent to GenerateContent has at most maxHistoryItems
+// entries. It must be called before appending the new user message.
 // It removes the oldest user/model pairs first, preserving any system-prompt
 // entry at index 0 for models that embed the system prompt in history (e.g. gemma-3).
 // wasTruncated is set to true if any entries were removed, false otherwise.
 func (c *GeminiChat) trimHistory() {
 	c.wasTruncated = false
-	if c.maxHistoryItems <= 0 || len(c.history) <= c.maxHistoryItems {
+	// Reserve one slot for the incoming user message so that after append
+	// len(history) <= maxHistoryItems holds when GenerateContent is called.
+	target := c.maxHistoryItems - 1
+	if c.maxHistoryItems <= 0 || len(c.history) <= target {
 		return
 	}
 
@@ -436,7 +441,7 @@ func (c *GeminiChat) trimHistory() {
 		prefix = 1
 	}
 
-	excess := len(c.history) - c.maxHistoryItems
+	excess := len(c.history) - target
 	// Align to pairs so user/model alternation is preserved.
 	if excess%2 != 0 {
 		excess++
@@ -445,9 +450,15 @@ func (c *GeminiChat) trimHistory() {
 	available := len(c.history) - prefix
 	if excess >= available {
 		// Cannot trim enough while keeping the prefix — trim as much as possible.
+		// Prefer an even count to preserve user/model alternation, but if rounding
+		// down would produce zero trims (e.g. available==1), accept the odd trim so
+		// the cap is still enforced as tightly as possible.
 		excess = available
 		if excess%2 != 0 {
-			excess--
+			excess-- // try even
+			if excess <= 0 {
+				excess = available // fall back to odd trim
+			}
 		}
 	}
 
@@ -458,7 +469,7 @@ func (c *GeminiChat) trimHistory() {
 	newHistory := make([]*genai.Content, 0, len(c.history)-excess)
 	newHistory = append(newHistory, c.history[:prefix]...)
 	newHistory = append(newHistory, c.history[prefix+excess:]...)
-	klog.Infof("trimHistory: trimmed %d history items (kept %d of %d)", excess, len(newHistory), len(c.history))
+	klog.V(3).Infof("trimHistory: trimmed %d history items (kept %d of %d)", excess, len(newHistory), len(c.history))
 	c.history = newHistory
 	c.wasTruncated = true
 }
