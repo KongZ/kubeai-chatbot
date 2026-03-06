@@ -350,3 +350,7 @@ func (rc *retryChat[C]) Initialize(messages []*api.Message) error {
 func (rc *retryChat[C]) WasTruncated() bool {
 	return rc.underlying.WasTruncated()
 }
+
+func (rc *retryChat[C]) TrimHistory() bool {
+	return rc.underlying.TrimHistory()
+}

@@ -318,6 +318,29 @@ if chat.IsRetryableError(err) {
 }
 ```
 
+### Context-length recovery
+
+When a request fails because the conversation history is too long, call `TrimHistory()` to drop the oldest portion of history and retry:
+
+```go
+iterator, err := chat.SendStreaming(ctx, userMessage)
+// ... consume iterator ...
+if isContextLengthError(err) {
+    if chat.TrimHistory() {
+        // history trimmed — retry the same message
+        iterator, err = chat.SendStreaming(ctx, userMessage)
+    } else {
+        // history already too short to trim; start a new session
+    }
+}
+```
+
+`TrimHistory()` rolls back the failed request (removing the user message and any partial model response that was appended during streaming), then drops the oldest half of the remaining history. It returns `true` if entries were removed, or `false` when the history is already too small to trim further.
+
+`WasTruncated()` returns `true` after any `Send`/`SendStreaming` call that proactively trimmed history due to the `LLM_MAX_HISTORY_ITEMS` cap, or after a successful `TrimHistory()` call.
+
+**Note:** `TrimHistory()` is currently implemented for the **Gemini/Vertex AI** backend only. All other backends return `false`.
+
 ## Adding a provider
 
 To add a new provider:

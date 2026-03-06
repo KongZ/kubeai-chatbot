@@ -149,7 +149,8 @@ func (cs *openAIResponseChatSession) Initialize(messages []*api.Message) error {
 	return nil
 }
 
-func (cs *openAIResponseChatSession) WasTruncated() bool { return false }
+func (cs *openAIResponseChatSession) WasTruncated() bool  { return false }
+func (cs *openAIResponseChatSession) TrimHistory() bool   { return false }
 
 // Helper structs for ChatResponse interface
 type openAIResponseChatResponse struct {

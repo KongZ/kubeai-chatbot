@@ -502,6 +502,9 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				}
 
 				// we run the agentic loop for one iteration
+				// Save before clearing so we can restore for a retry after trimming.
+				lastChatContent := c.currChatContent
+
 				stream, err := c.llmChat.SendStreaming(ctx, c.currChatContent...)
 				if err != nil {
 					log.Error(err, "error sending streaming LLM response")
@@ -571,17 +574,22 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				}
 				if llmError != nil {
 					log.Error(llmError, "error streaming LLM response")
-					c.setAgentState(api.AgentStateDone)
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
 					if isContextLengthExceededError(llmError) {
-						if c.llmChat.WasTruncated() {
-							c.addMessage(api.MessageSourceAgent, api.MessageTypeError,
-								"The conversation history is too large to process, even after truncating older messages. Please start a new session by typing `clear`.")
-						} else {
-							c.addMessage(api.MessageSourceAgent, api.MessageTypeError,
-								"The conversation history is too large to process. Please start a new session by typing `clear`.")
+						// Try to recover by dropping the oldest half of the history and retrying.
+						if c.llmChat.TrimHistory() {
+							log.V(2).Info("context length exceeded, trimmed history and will retry")
+							c.addMessage(api.MessageSourceAgent, api.MessageTypeText,
+								"_Note: The conversation history was too long. Older messages have been dropped so the conversation can continue._")
+							c.currChatContent = lastChatContent
+							continue
 						}
+						// Cannot trim further — give up.
+						c.setAgentState(api.AgentStateDone)
+						c.addMessage(api.MessageSourceAgent, api.MessageTypeError,
+							"The conversation is too long to continue. You can start a new conversation, or type `clear` to reset this thread.")
 					} else {
+						c.setAgentState(api.AgentStateDone)
 						c.addMessage(api.MessageSourceAgent, api.MessageTypeError, "Error: "+llmError.Error())
 					}
 					c.lastErr = llmError

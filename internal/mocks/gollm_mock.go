@@ -233,3 +233,17 @@ func (mr *MockChatMockRecorder) WasTruncated() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WasTruncated", reflect.TypeOf((*MockChat)(nil).WasTruncated))
 }
+
+// TrimHistory mocks base method.
+func (m *MockChat) TrimHistory() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TrimHistory")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// TrimHistory indicates an expected call of TrimHistory.
+func (mr *MockChatMockRecorder) TrimHistory() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrimHistory", reflect.TypeOf((*MockChat)(nil).TrimHistory))
+}

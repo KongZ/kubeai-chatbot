@@ -65,6 +65,11 @@ type Chat interface {
 
 	// WasTruncated returns true if the history was truncated during the last Send or SendStreaming call.
 	WasTruncated() bool
+
+	// TrimHistory drops the oldest portion of conversation history to recover from context-length
+	// errors. It returns true if any entries were removed, false when history is already too
+	// short to trim further or trimming is not supported by this backend.
+	TrimHistory() bool
 }
 
 // CompletionRequest is a request to generate a completion for a given prompt.

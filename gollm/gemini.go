@@ -321,6 +321,11 @@ type GeminiChat struct {
 
 	// wasTruncated is set to true when history was trimmed during the last Send/SendStreaming call.
 	wasTruncated bool
+
+	// lastSendStart records len(history) immediately before the user message was appended by the
+	// most recent Send/SendStreaming call. TrimHistory uses it to roll back all content that was
+	// added during that failed call (user message + any partial model response chunks).
+	lastSendStart int
 }
 
 // SetFunctionDefinitions sets the function definitions for the chat.
@@ -419,6 +424,47 @@ func (c *GeminiChat) WasTruncated() bool {
 	return c.wasTruncated
 }
 
+// TrimHistory rolls back all content appended by the most recent failed Send/SendStreaming call
+// (the user message and any partial model response chunks), then drops the oldest half of the
+// remaining history so the next retry can succeed within the context limit.
+// Returns false when history is already too short to trim meaningfully.
+func (c *GeminiChat) TrimHistory() bool {
+	// Roll back everything added by the failed call: user message + any partial model chunks.
+	// lastSendStart was recorded just before the user message was appended.
+	if c.lastSendStart < len(c.history) {
+		c.history = c.history[:c.lastSendStart]
+	}
+
+	// Need at least a few entries left before trimming makes sense.
+	const minHistory = 2
+	if len(c.history) <= minHistory {
+		return false
+	}
+
+	prefix := 0
+	if c.genConfig.SystemInstruction == nil && len(c.history) > 0 {
+		prefix = 1
+	}
+
+	available := len(c.history) - prefix
+	drop := available / 2
+	// Align to pairs to preserve user/model alternation.
+	if drop%2 != 0 {
+		drop--
+	}
+	if drop <= 0 {
+		return false
+	}
+
+	newHistory := make([]*genai.Content, 0, len(c.history)-drop)
+	newHistory = append(newHistory, c.history[:prefix]...)
+	newHistory = append(newHistory, c.history[prefix+drop:]...)
+	klog.V(3).Infof("TrimHistory: dropped %d entries (kept %d of %d)", drop, len(newHistory), len(c.history))
+	c.history = newHistory
+	c.wasTruncated = true
+	return true
+}
+
 // trimHistory trims c.history so that after the caller appends the incoming
 // user message the slice sent to GenerateContent has at most maxHistoryItems
 // entries. It must be called before appending the new user message.
@@ -491,6 +537,7 @@ func (c *GeminiChat) Send(ctx context.Context, contents ...any) (ChatResponse, e
 	}
 
 	c.trimHistory()
+	c.lastSendStart = len(c.history)
 	c.history = append(c.history, genaiContent)
 	result, err := c.client.Models.GenerateContent(ctx, c.model, c.history, c.genConfig)
 	if err != nil {
@@ -520,6 +567,7 @@ func (c *GeminiChat) SendStreaming(ctx context.Context, contents ...any) (ChatRe
 	}
 
 	c.trimHistory()
+	c.lastSendStart = len(c.history)
 	c.history = append(c.history, genaiContent)
 	stream := c.client.Models.GenerateContentStream(ctx, c.model, c.history, c.genConfig)
 

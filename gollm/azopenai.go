@@ -276,6 +276,7 @@ func (c *AzureOpenAIChat) Initialize(messages []*api.Message) error {
 }
 
 func (c *AzureOpenAIChat) WasTruncated() bool { return false }
+func (c *AzureOpenAIChat) TrimHistory() bool  { return false }
 
 func (c *AzureOpenAIChat) SendStreaming(ctx context.Context, contents ...any) (ChatResponseIterator, error) {
 	// TODO: Implement streaming
