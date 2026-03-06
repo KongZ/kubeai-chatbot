@@ -301,6 +301,7 @@ func (c *LlamaCppChat) Initialize(messages []*api.Message) error {
 }
 
 func (c *LlamaCppChat) WasTruncated() bool { return false }
+func (c *LlamaCppChat) TrimHistory() bool  { return false }
 
 func ptrTo[T any](t T) *T {
 	return &t

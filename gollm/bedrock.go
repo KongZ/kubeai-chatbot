@@ -528,6 +528,7 @@ func (c *bedrockChat) IsRetryableError(err error) bool {
 }
 
 func (c *bedrockChat) WasTruncated() bool { return false }
+func (c *bedrockChat) TrimHistory() bool  { return false }
 
 // bedrockResponse implements ChatResponse for regular (non-streaming) responses
 type bedrockResponse struct {

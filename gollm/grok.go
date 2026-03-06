@@ -386,6 +386,7 @@ func (cs *grokChatSession) Initialize(messages []*api.Message) error {
 }
 
 func (cs *grokChatSession) WasTruncated() bool { return false }
+func (cs *grokChatSession) TrimHistory() bool  { return false }
 
 // --- Helper structs for ChatResponse interface ---
 
