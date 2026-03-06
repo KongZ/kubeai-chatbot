@@ -99,7 +99,7 @@ Even without `LLM_MAX_HISTORY_ITEMS` set, the bot automatically recovers if the 
 | ---------------------------------------------------------- | ----------------- |
 | Mainly Q&A, simple commands                                | `50`              |
 | Regular investigations (up to ~10 tool calls per question) | `20–30`           |
-| Deep investigations (10+ tool calls, logs, yaml)           | `10–20`           |
+| Deep investigations (10+ tool calls, logs, YAML)           | `10–20`           |
 
 For deep investigations, a **lower** cap is more useful: it aggressively drops earlier exchanges, leaving more token budget for the current (large) investigation. However, if a single question generates so many large outputs that it hits the limit by itself, the item cap cannot help — the auto-recovery mechanism and starting a more targeted session are the only remedies.
 
