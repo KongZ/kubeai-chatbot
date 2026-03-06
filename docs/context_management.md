@@ -36,9 +36,9 @@ Items = 2  (user question + first model response)
 | Single command (`kubectl get pods`)  | 1          | 6             |
 | Short investigation (3 commands)     | 3          | 10            |
 | Moderate investigation (10 commands) | 10         | 24            |
-| Deep investigation (26 commands)     | 26         | 54            |
+| Deep investigation (25 commands)     | 25         | 52            |
 
-A real-world diagnosis session that compared two clusters — running `kubectl get deployments`, `kubectl logs`, `kubectl describe canary`, `kubectl get deployment -o yaml`, and `kubectl get events` across both clusters (26 commands total) — produced **54 history items** and hit the token limit even with `LLM_MAX_HISTORY_ITEMS=100`.
+A real-world diagnosis session that run on multiple clusters — running `kubectl get deployments`, `kubectl logs`, `kubectl describe canary`, `kubectl get deployment -o yaml`, and `kubectl get events` across both clusters (It may run more than 25 commands total) — produced **52 history items** and hit the token limit even with `LLM_MAX_HISTORY_ITEMS=100`.
 
 ### Token size vs. item count
 
@@ -52,14 +52,14 @@ A real-world diagnosis session that compared two clusters — running `kubectl g
 | `kubectl get ... -o yaml` | ~3,000–15,000       |
 | `kubectl logs` (busy pod) | ~10,000–50,000+     |
 
-For the 26-command investigation above:
+For the 25-command investigation above:
 
   - 7 × `kubectl logs`: up to ~350,000 tokens
   - 2 × `kubectl get deployment -o yaml`: ~10,000–20,000 tokens
   - Other commands: ~20,000–40,000 tokens
   - **Total tool output alone: ~380,000–410,000+ tokens** — plus model reasoning, system prompt, and prior history
 
-Even with `LLM_MAX_HISTORY_ITEMS=100`, the session produced only 54 items (well below the cap), so no trimming occurred, and the token budget was exhausted by output size.
+Even with `LLM_MAX_HISTORY_ITEMS=100`, the session produced only 52 items (well below the cap), so no trimming occurred, and the token budget was exhausted by output size.
 
 ### Trimming behavior
 
@@ -81,17 +81,7 @@ Even without `LLM_MAX_HISTORY_ITEMS` set, the bot automatically recovers if the 
   5. If the history is already too short to trim further (≤ 2 entries), or if the **current exchange alone** exceeds the token limit (e.g. a single investigation with enormous log outputs), recovery gives up and the bot shows a terminal error:
     > *The conversation is too long to continue. You can start a new conversation, or type `clear` to reset this thread.*
 
-> **Note:** Auto-recovery can only drop **prior** history. If a single user question generates enough large tool outputs to exhaust the token budget on its own, no amount of history trimming will resolve it. In this case, start a fresh session (`clear`) and use more targeted commands (e.g. `--tail=100` to limit log output, or fetch specific fields rather than `-o yaml`).
-
-## Sizing guide
-
-| `LLM_MAX_HISTORY_ITEMS` | Q&A-only exchanges | Q + 1 tool call | Q + 10 tool calls              | Q + 26 tool calls |
-| ----------------------- | ------------------ | --------------- | ------------------------------ | ----------------- |
-| `10`                    | ~5                 | ~1              | <1 (trimmed mid-investigation) | <1                |
-| `20`                    | ~10                | ~3              | ~1                             | <1                |
-| `50`                    | ~25                | ~8              | ~2                             | ~1                |
-| `100`                   | ~50                | ~16             | ~4                             | ~2                |
-| `0` (default)           | unlimited          | unlimited       | unlimited                      | unlimited         |
+> **Note:** Auto-recovery can only drop **prior** history. If a single user question generates enough large tool outputs to exhaust the token budget on its own, no amount of history trimming will resolve it. In this case, start a fresh session (`clear`) and ask a more targeted question — for example, ask about a specific pod or time window rather than requesting full logs for all pods.
 
 **Recommendation:**
 
@@ -103,10 +93,11 @@ Even without `LLM_MAX_HISTORY_ITEMS` set, the bot automatically recovers if the 
 
 For deep investigations, a **lower** cap is more useful: it aggressively drops earlier exchanges, leaving more token budget for the current (large) investigation. However, if a single question generates so many large outputs that it hits the limit by itself, the item cap cannot help — the auto-recovery mechanism and starting a more targeted session are the only remedies.
 
-For very output-heavy commands, consider limiting output size at the command level:
+For very output-heavy investigations, try asking more targeted questions:
 
-  - `kubectl logs --tail=100` instead of full log output
-  - `kubectl get ... -o jsonpath=...` to fetch specific fields instead of full YAML
+  - Ask about a **specific pod or container** rather than all pods at once
+  - Ask for **recent errors or warnings** rather than full logs
+  - Ask for **specific fields** (e.g. "what is the image version?") rather than the full resource definition
 
 ## Example: what gets trimmed
 
