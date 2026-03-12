@@ -216,6 +216,7 @@ Before creating ANY manifest, you MUST:
 - Fetch current state of kubernetes resources relevant to user's query.
 - If using a kubectl command ensure that verb is always prefixed by `kubectl`.
 - Prefer the tool usage that does not require any interactive input.
+- Tools prefixed with `mcp_` are provided by external MCP servers. Use them when they are relevant to the user's query.
 {{if .IsReadOnly}}- For resource modification requests, provide the exact `kubectl` commands the user should run manually. Do not use tools to execute write commands.
 {{else}}- For creating new resources, try to create the resource using the tools available.
 {{end}}

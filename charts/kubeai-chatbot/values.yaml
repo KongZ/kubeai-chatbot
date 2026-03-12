@@ -166,6 +166,19 @@ volumes: []
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts: []
 
+# -- Additional containers to run alongside the main kubeai-chatbot container.
+# Useful for deploying MCP servers or other sidecars in the same pod.
+# Each entry is a full Kubernetes container spec.
+additionalContainers: []
+# Example MCP server sidecar:
+# - name: my-mcp-server
+#   image: my-org/my-mcp-server:latest
+#   ports:
+#     - containerPort: 8090
+#   env:
+#     - name: SOME_VAR
+#       value: "some-value"
+
 nodeSelector: {}
 
 tolerations: []
@@ -198,6 +211,12 @@ env:
   ## See docs/context_management.md for sizing details.
   #
   # LLM_MAX_HISTORY_ITEMS: "50"
+
+  ## MCP Server Configuration
+  ## Comma-separated list of name=url pairs for MCP servers running as sidecars.
+  ## Example: MCP_SERVERS: "fetcher=http://localhost:8090,slack=http://localhost:8091"
+  #
+  # MCP_SERVERS: ""
 
   ## Authentication Configuration
   #

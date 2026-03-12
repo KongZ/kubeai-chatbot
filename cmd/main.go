@@ -29,6 +29,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/pkg/agent"
 	"github.com/KongZ/kubeai-chatbot/pkg/auth"
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
+	"github.com/KongZ/kubeai-chatbot/pkg/mcp"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
 	"github.com/KongZ/kubeai-chatbot/pkg/ui"
@@ -104,6 +105,16 @@ func run(ctx context.Context) error {
 		}
 	}()
 
+	// Initialize MCP manager (optional; non-fatal if MCP_SERVERS is unset or fails)
+	var mcpManager *mcp.Manager
+	if mcpServersEnv := getEnv("MCP_SERVERS", ""); mcpServersEnv != "" {
+		mcpManager, err = mcp.NewManager(ctx, mcpServersEnv)
+		if err != nil {
+			klog.Warningf("MCP initialization failed: %v — continuing without MCP", err)
+			mcpManager = nil
+		}
+	}
+
 	// Agent factory
 	agentFactory := func(ctx context.Context) (*agent.Agent, error) {
 		var client gollm.Client
@@ -115,6 +126,13 @@ func run(ctx context.Context) error {
 		// Create a new Tools instance for each agent to avoid sharing state
 		agentTools := tools.Tools{}
 		agentTools.Init()
+
+		// Register MCP tools discovered at startup
+		if mcpManager != nil {
+			for _, dt := range mcpManager.DiscoveredTools() {
+				agentTools.RegisterTool(tools.NewMCPTool(dt))
+			}
+		}
 
 		return &agent.Agent{
 			Model:           modelID,
