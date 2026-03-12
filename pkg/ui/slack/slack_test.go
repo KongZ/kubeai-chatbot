@@ -188,47 +188,39 @@ func TestMarkdownToBlocks(t *testing.T) {
 	}
 }
 
-// TestIsComplexOrLong verifies the logic that determines whether a message should be uploaded
-// as a file snippet instead of posted directly. Only messages exceeding 3000 characters are
-// considered complex; code blocks alone no longer force snippet upload.
-func TestIsComplexOrLong(t *testing.T) {
+// TestBlockCountLimit verifies that messages are routed to snippet upload only when they
+// exceed maxSlackBlocks (50), not based on raw character count.
+func TestBlockCountLimit(t *testing.T) {
+	s := &SlackUI{}
+
 	tests := []struct {
-		name     string
-		input    string
-		expected bool
+		name          string
+		input         string
+		expectSnippet bool
 	}{
 		{
-			name:     "short simple text",
-			input:    "hello world",
-			expected: false,
+			name:          "short simple text",
+			input:         "hello world",
+			expectSnippet: false,
 		},
 		{
-			name:     "long text",
-			input:    strings.Repeat("a", 3001),
-			expected: true,
+			name:          "long text over 3000 chars but few blocks",
+			input:         strings.Repeat("a", 3001),
+			expectSnippet: false, // long text generates only 1 section block — well under 50
 		},
 		{
-			name:     "table",
-			input:    "| Name | Age |\n|---|---|\n| Foo | 20 |",
-			expected: false,
-		},
-		{
-			name:     "text with code blocks under 3000 chars is not complex",
-			input:    "Here is code:\n```go\nfunc main() {}\n```\n" + strings.Repeat("x", 1000),
-			expected: false, // code blocks alone no longer trigger snippet upload
-		},
-		{
-			name:     "short code block",
-			input:    "```echo hello```",
-			expected: false,
+			name:          "table with text over 3000 chars",
+			input:         strings.Repeat("intro text\n", 20) + "| Name | Age |\n|---|---|\n| Foo | 20 |",
+			expectSnippet: false, // generates a few blocks — under 50
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := isComplexOrLong(tt.input)
-			if actual != tt.expected {
-				t.Errorf("isComplexOrLong() = %v, want %v", actual, tt.expected)
+			blocks := s.generateBlocks(tt.input, false)
+			overLimit := len(blocks) > maxSlackBlocks
+			if overLimit != tt.expectSnippet {
+				t.Errorf("block count %d, overLimit=%v, want expectSnippet=%v", len(blocks), overLimit, tt.expectSnippet)
 			}
 		})
 	}
@@ -902,8 +894,16 @@ func TestPostToSlack(t *testing.T) {
 			expectPostMsg: true,
 		},
 		{
-			name:          "long message uses snippet",
-			text:          strings.Repeat("a", 3001),
+			// Snippet is triggered by block count (>50), not character count.
+			// Build a message with 51 distinct sections separated by headers.
+			name: "too many blocks uses snippet",
+			text: func() string {
+				var b strings.Builder
+				for i := 0; i < 51; i++ {
+					b.WriteString(fmt.Sprintf("## Section %d\nContent for section %d\n\n", i, i))
+				}
+				return b.String()
+			}(),
 			expectUpload:  true,
 			expectPostMsg: false,
 		},
@@ -1214,13 +1214,6 @@ func TestMarkdownToBlocksWithCodeBlockAndDivider(t *testing.T) {
 		"| :--- | :--- | :--- |\n" +
 		"| `example-component` | `CrashLoopBackOff` | Probe conflict blocking upgrade. |\n" +
 		"| `other-component` | `Running` | Working correctly. |\n"
-
-	// The text has two code blocks but is well under 3000 chars:
-	// it must NOT be routed to snippet upload after the fix.
-	if isComplexOrLong(input) {
-		t.Errorf("isComplexOrLong(%d chars with code blocks) = true, want false; "+
-			"code blocks should no longer force snippet upload", len(input))
-	}
 
 	blocks := s.markdownToBlocks(input)
 

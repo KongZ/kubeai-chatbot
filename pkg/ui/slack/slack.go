@@ -496,13 +496,18 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 	}()
 }
 
+// maxSlackBlocks is the maximum number of blocks Slack allows in a single message.
+const maxSlackBlocks = 50
+
 func (s *SlackUI) postToSlack(channel, threadTS, text string, includeContext bool) {
-	if isComplexOrLong(text) {
+	blocks := s.generateBlocks(text, includeContext)
+
+	// Slack rejects messages with more than 50 blocks; fall back to a file snippet.
+	if len(blocks) > maxSlackBlocks {
+		klog.Warningf("Message generates %d blocks (limit %d), uploading as snippet instead", len(blocks), maxSlackBlocks)
 		s.uploadSnippet(channel, threadTS, text)
 		return
 	}
-
-	blocks := s.generateBlocks(text, includeContext)
 
 	// Debug logging of blocks (Trace-level: v=4)
 	if klog.V(4).Enabled() {
@@ -565,14 +570,33 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 	inTable := false
 	inCodeBlock := false
 
+	// maxSectionChars is Slack's character limit for a single section block's text field.
+	const maxSectionChars = 3000
+
 	flushParagraph := func() {
 		if len(currentParagraph) > 0 {
 			paraText := strings.TrimSpace(strings.Join(currentParagraph, "\n"))
 			if paraText != "" {
-				blocks = append(blocks, slack.NewSectionBlock(
-					slack.NewTextBlockObject(slack.MarkdownType, formatForSlack(paraText), false, false),
-					nil, nil,
-				))
+				formatted := formatForSlack(paraText)
+				// Split oversized paragraphs to stay within Slack's 3000-char section limit.
+				for len(formatted) > maxSectionChars {
+					chunk := formatted[:maxSectionChars]
+					// Break at the last newline to avoid splitting mid-sentence.
+					if idx := strings.LastIndex(chunk, "\n"); idx > 0 {
+						chunk = chunk[:idx]
+					}
+					blocks = append(blocks, slack.NewSectionBlock(
+						slack.NewTextBlockObject(slack.MarkdownType, chunk, false, false),
+						nil, nil,
+					))
+					formatted = strings.TrimSpace(formatted[len(chunk):])
+				}
+				if formatted != "" {
+					blocks = append(blocks, slack.NewSectionBlock(
+						slack.NewTextBlockObject(slack.MarkdownType, formatted, false, false),
+						nil, nil,
+					))
+				}
 			}
 			currentParagraph = nil
 		}
@@ -1046,6 +1070,3 @@ func formatForSlack(text string) string {
 	return text
 }
 
-func isComplexOrLong(text string) bool {
-	return len(text) > 3000
-}
