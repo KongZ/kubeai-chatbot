@@ -23,6 +23,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -267,7 +268,7 @@ func (s *Agent) Init(ctx context.Context) error {
 	// Register kubectl tool
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 
-	kubeContexts, err := loadKubeContextNames(s.Kubeconfig)
+	kubeContexts, err := loadKubeContextNames(ctx, s.Kubeconfig)
 	if err != nil {
 		log.Error(err, "Could not load kube contexts for system prompt, proceeding without context list")
 		kubeContexts = nil
@@ -1155,10 +1156,12 @@ type kubeConfigFile struct {
 	} `yaml:"contexts"`
 }
 
-// loadKubeContextNames reads a kubeconfig file and returns the names of all defined contexts.
-// Returns nil, nil when the file does not exist (e.g. in-cluster deployments without a kubeconfig).
-// Returns an error only for unexpected failures such as permission errors or malformed YAML.
-func loadKubeContextNames(kubeconfigPath string) ([]string, error) {
+// loadKubeContextNames reads a kubeconfig file, tests connectivity to each context's
+// Kubernetes API server in parallel, and returns only the names of reachable contexts.
+// Contexts that fail the connectivity check are logged and excluded from the result.
+// Returns nil, nil when the kubeconfig file does not exist (e.g. in-cluster deployments).
+func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string, error) {
+	kubeconfigPath = os.ExpandEnv(kubeconfigPath)
 	data, err := os.ReadFile(kubeconfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1170,9 +1173,41 @@ func loadKubeContextNames(kubeconfigPath string) ([]string, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(cfg.Contexts))
+	if len(cfg.Contexts) == 0 {
+		return nil, nil
+	}
+
+	log := klog.FromContext(ctx)
+
+	type result struct {
+		name string
+		err  error
+	}
+	results := make(chan result, len(cfg.Contexts))
+
 	for _, c := range cfg.Contexts {
-		names = append(names, c.Name)
+		name := c.Name
+		go func() {
+			tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(tctx, "kubectl",
+				"--kubeconfig", kubeconfigPath,
+				"--context", name,
+				"get", "--raw", "/readyz",
+				"--request-timeout=5s",
+			)
+			results <- result{name: name, err: cmd.Run()}
+		}()
+	}
+
+	names := make([]string, 0, len(cfg.Contexts))
+	for range cfg.Contexts {
+		r := <-results
+		if r.err != nil {
+			log.Info("Kube context is not reachable, excluding from agent context list", "context", r.name, "err", r.err)
+		} else {
+			names = append(names, r.name)
+		}
 	}
 	return names, nil
 }

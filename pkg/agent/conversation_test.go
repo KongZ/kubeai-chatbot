@@ -17,6 +17,11 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -411,6 +416,102 @@ func TestAgent_Init_CreatesSessionInStore(t *testing.T) {
 
 	if a.Session != session {
 		t.Errorf("expected agent to use provided session")
+	}
+}
+
+func writeKubeconfig(t *testing.T, content string) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "kubeconfig-*.yaml")
+	if err != nil {
+		t.Fatalf("creating temp kubeconfig: %v", err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("writing kubeconfig: %v", err)
+	}
+	f.Close()
+	return f.Name()
+}
+
+func kubeconfigWithServers(reachableURL, unreachableURL string) string {
+	return fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: %s
+  name: reachable-cluster
+- cluster:
+    server: %s
+  name: unreachable-cluster
+contexts:
+- context:
+    cluster: reachable-cluster
+    user: test-user
+  name: reachable-context
+- context:
+    cluster: unreachable-cluster
+    user: test-user
+  name: unreachable-context
+current-context: reachable-context
+users:
+- name: test-user
+  user: {}
+`, reachableURL, unreachableURL)
+}
+
+func TestLoadKubeContextNames_MissingFile(t *testing.T) {
+	names, err := loadKubeContextNames(context.Background(), "/does/not/exist/kubeconfig.yaml")
+	if err != nil {
+		t.Fatalf("expected nil error for missing file, got: %v", err)
+	}
+	if names != nil {
+		t.Fatalf("expected nil names for missing file, got: %v", names)
+	}
+}
+
+func TestLoadKubeContextNames_MalformedYAML(t *testing.T) {
+	path := writeKubeconfig(t, ":: this is not valid yaml ::")
+	_, err := loadKubeContextNames(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML, got nil")
+	}
+}
+
+func TestLoadKubeContextNames_EmptyContexts(t *testing.T) {
+	path := writeKubeconfig(t, "apiVersion: v1\nkind: Config\ncontexts: []\n")
+	names, err := loadKubeContextNames(context.Background(), path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 0 {
+		t.Fatalf("expected no contexts, got: %v", names)
+	}
+}
+
+func TestLoadKubeContextNames_ConnectivityCheck(t *testing.T) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubectl not in PATH, skipping connectivity test")
+	}
+
+	// reachable: a local HTTP server that responds 200 to /readyz
+	reachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	}))
+	defer reachable.Close()
+
+	// unreachable: start and immediately close so connections are refused
+	unreachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	unreachableURL := unreachable.URL
+	unreachable.Close()
+
+	path := writeKubeconfig(t, kubeconfigWithServers(reachable.URL, unreachableURL))
+
+	names, err := loadKubeContextNames(context.Background(), path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 1 || names[0] != "reachable-context" {
+		t.Fatalf("expected [reachable-context], got: %v", names)
 	}
 }
 
