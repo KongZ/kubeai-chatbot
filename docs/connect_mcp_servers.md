@@ -162,8 +162,8 @@ additionalContainers:
 
 Tool names across servers are namespaced by server name, so there are no collisions:
 
-- `mcp_datadog_query_metrics`
-- `mcp_pagerduty_list_incidents`
+  - `mcp_datadog_query_metrics`
+  - `mcp_pagerduty_list_incidents`
 
 ---
 
