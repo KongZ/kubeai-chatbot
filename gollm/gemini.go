@@ -456,6 +456,18 @@ func (c *GeminiChat) TrimHistory() bool {
 		return false
 	}
 
+	// Advance drop past any orphaned function responses: if the first kept entry
+	// is a function response, its matching function call was just dropped, which
+	// causes Gemini to return "function response turn comes immediately after a
+	// function call turn". Skip such entries (in pairs) until we land on a plain
+	// user message or exhaust the available history.
+	for prefix+drop < len(c.history) && isFunctionResponseContent(c.history[prefix+drop]) {
+		drop += 2
+	}
+	if drop <= 0 || prefix+drop >= len(c.history) {
+		return false
+	}
+
 	newHistory := make([]*genai.Content, 0, len(c.history)-drop)
 	newHistory = append(newHistory, c.history[:prefix]...)
 	newHistory = append(newHistory, c.history[prefix+drop:]...)
@@ -512,12 +524,42 @@ func (c *GeminiChat) trimHistory() {
 		return
 	}
 
+	// Advance excess past any orphaned function responses: if the first kept entry
+	// is a function response, its matching function call was just dropped, which
+	// causes Gemini to return "function response turn comes immediately after a
+	// function call turn". Skip such entries (in pairs) until we land on a plain
+	// user message or exhaust available history.
+	for prefix+excess < len(c.history) && isFunctionResponseContent(c.history[prefix+excess]) {
+		excess += 2
+	}
+	if prefix+excess >= len(c.history) {
+		// Advancing consumed all history; bail out without trimming.
+		return
+	}
+
 	newHistory := make([]*genai.Content, 0, len(c.history)-excess)
 	newHistory = append(newHistory, c.history[:prefix]...)
 	newHistory = append(newHistory, c.history[prefix+excess:]...)
 	klog.V(3).Infof("trimHistory: trimmed %d history items (kept %d of %d)", excess, len(newHistory), len(c.history))
 	c.history = newHistory
 	c.wasTruncated = true
+}
+
+// isFunctionResponseContent reports whether content is a "user"-role entry
+// whose parts are exclusively FunctionResponse (i.e. a tool result, not a
+// user question). Such entries must never be the first entry in a history
+// slice sent to Gemini — they must always be preceded by the model turn that
+// issued the matching function call.
+func isFunctionResponseContent(c *genai.Content) bool {
+	if c.Role != "user" || len(c.Parts) == 0 {
+		return false
+	}
+	for _, part := range c.Parts {
+		if part.FunctionResponse == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // Send sends a message to the model.

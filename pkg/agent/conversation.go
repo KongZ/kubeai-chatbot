@@ -23,6 +23,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -36,6 +37,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
 	"github.com/google/uuid"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 )
 
 //go:embed systemprompt_template_default.txt
@@ -266,12 +268,19 @@ func (s *Agent) Init(ctx context.Context) error {
 	// Register kubectl tool
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 
+	kubeContexts, err := loadKubeContextNames(ctx, s.Kubeconfig)
+	if err != nil {
+		log.Error(err, "Could not load kube contexts for system prompt, proceeding without context list")
+		kubeContexts = nil
+	}
+
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
 		Tools:                s.Tools,
 		EnableToolUseShim:    s.EnableToolUseShim,
 		ModifyResources:      s.ModifyResources,
 		SessionIsInteractive: true,
 		AgentName:            s.AgentName,
+		KubeContexts:         kubeContexts,
 	})
 	if err != nil {
 		return fmt.Errorf("generating system prompt: %w", err)
@@ -1141,6 +1150,68 @@ func (c *Agent) handleChoice(ctx context.Context, choice *api.UserChoiceResponse
 	return dispatchToolCalls
 }
 
+type kubeConfigFile struct {
+	Contexts []struct {
+		Name string `yaml:"name"`
+	} `yaml:"contexts"`
+}
+
+// loadKubeContextNames reads a kubeconfig file, tests connectivity to each context's
+// Kubernetes API server in parallel, and returns only the names of reachable contexts.
+// Contexts that fail the connectivity check are logged and excluded from the result.
+// Returns nil, nil when the kubeconfig file does not exist (e.g. in-cluster deployments).
+func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string, error) {
+	kubeconfigPath = os.ExpandEnv(kubeconfigPath)
+	data, err := os.ReadFile(kubeconfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var cfg kubeConfigFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	if len(cfg.Contexts) == 0 {
+		return nil, nil
+	}
+
+	log := klog.FromContext(ctx)
+
+	type result struct {
+		name string
+		err  error
+	}
+	results := make(chan result, len(cfg.Contexts))
+
+	for _, c := range cfg.Contexts {
+		name := c.Name
+		go func() {
+			tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(tctx, "kubectl",
+				"--kubeconfig", kubeconfigPath,
+				"--context", name,
+				"get", "--raw", "/readyz",
+				"--request-timeout=5s",
+			)
+			results <- result{name: name, err: cmd.Run()}
+		}()
+	}
+
+	names := make([]string, 0, len(cfg.Contexts))
+	for range cfg.Contexts {
+		r := <-results
+		if r.err != nil {
+			log.Info("Kube context is not reachable, excluding from agent context list", "context", r.name, "err", r.err)
+		} else {
+			names = append(names, r.name)
+		}
+	}
+	return names, nil
+}
+
 // generateFromTemplate generates a prompt for LLM. It uses the prompt from the provides template file or default.
 func (a *Agent) generatePrompt(_ context.Context, defaultPromptTemplate string, data PromptData) (string, error) {
 	promptTemplate := defaultPromptTemplate
@@ -1182,6 +1253,7 @@ type PromptData struct {
 	ModifyResources      ModifyResourcesMode
 	SessionIsInteractive bool
 	AgentName            string
+	KubeContexts         []string // context names from kubeconfig, injected at startup
 }
 
 func (a *PromptData) IsReadOnly() bool    { return a.ModifyResources == ModifyResourcesModeNone }
