@@ -36,6 +36,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
 	"github.com/google/uuid"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 )
 
 //go:embed systemprompt_template_default.txt
@@ -266,12 +267,19 @@ func (s *Agent) Init(ctx context.Context) error {
 	// Register kubectl tool
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 
+	kubeContexts, err := loadKubeContextNames(s.Kubeconfig)
+	if err != nil {
+		log.Error(err, "Could not load kube contexts for system prompt, proceeding without context list")
+		kubeContexts = nil
+	}
+
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
 		Tools:                s.Tools,
 		EnableToolUseShim:    s.EnableToolUseShim,
 		ModifyResources:      s.ModifyResources,
 		SessionIsInteractive: true,
 		AgentName:            s.AgentName,
+		KubeContexts:         kubeContexts,
 	})
 	if err != nil {
 		return fmt.Errorf("generating system prompt: %w", err)
@@ -1141,6 +1149,34 @@ func (c *Agent) handleChoice(ctx context.Context, choice *api.UserChoiceResponse
 	return dispatchToolCalls
 }
 
+type kubeConfigFile struct {
+	Contexts []struct {
+		Name string `yaml:"name"`
+	} `yaml:"contexts"`
+}
+
+// loadKubeContextNames reads a kubeconfig file and returns the names of all defined contexts.
+// Returns nil, nil when the file does not exist (e.g. in-cluster deployments without a kubeconfig).
+// Returns an error only for unexpected failures such as permission errors or malformed YAML.
+func loadKubeContextNames(kubeconfigPath string) ([]string, error) {
+	data, err := os.ReadFile(kubeconfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var cfg kubeConfigFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(cfg.Contexts))
+	for _, c := range cfg.Contexts {
+		names = append(names, c.Name)
+	}
+	return names, nil
+}
+
 // generateFromTemplate generates a prompt for LLM. It uses the prompt from the provides template file or default.
 func (a *Agent) generatePrompt(_ context.Context, defaultPromptTemplate string, data PromptData) (string, error) {
 	promptTemplate := defaultPromptTemplate
@@ -1182,6 +1218,7 @@ type PromptData struct {
 	ModifyResources      ModifyResourcesMode
 	SessionIsInteractive bool
 	AgentName            string
+	KubeContexts         []string // context names from kubeconfig, injected at startup
 }
 
 func (a *PromptData) IsReadOnly() bool    { return a.ModifyResources == ModifyResourcesModeNone }
