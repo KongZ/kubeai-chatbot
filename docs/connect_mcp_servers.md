@@ -161,6 +161,7 @@ additionalContainers:
 ```
 
 Tool names across servers are namespaced by server name, so there are no collisions:
+
 - `mcp_datadog_query_metrics`
 - `mcp_pagerduty_list_incidents`
 
@@ -258,16 +259,16 @@ KubeAI connects to the URL specified in `MCP_SERVERS` and sends all JSON-RPC req
 
   **Tools not appearing:**
 
-    - Check KubeAI logs at startup for `"Loaded N tools from MCP server <name>"` or warning messages.
-    - Verify the MCP server container is running: `kubectl logs <pod> -c <mcp-container-name>`
-    - Confirm the port in `MCP_SERVERS` matches the `containerPort` in `additionalContainers`.
+  - Check KubeAI logs at startup for `"Loaded N tools from MCP server <name>"` or warning messages.
+  - Verify the MCP server container is running: `kubectl logs <pod> -c <mcp-container-name>`
+  - Confirm the port in `MCP_SERVERS` matches the `containerPort` in `additionalContainers`.
 
   **MCP server crashes:**
 
-    - MCP failures are non-fatal. KubeAI continues without MCP tools and logs a warning.
-    - Fix the sidecar and restart the pod to reconnect.
+  - MCP failures are non-fatal. KubeAI continues without MCP tools and logs a warning.
+  - Fix the sidecar and restart the pod to reconnect.
 
   **Tool calls failing:**
 
-    - MCP tool errors are returned to the agent as error text, which the LLM will surface to the user.
-    - Check the MCP server's own logs for the underlying cause.
+  - MCP tool errors are returned to the agent as error text, which the LLM will surface to the user.
+  - Check the MCP server's own logs for the underlying cause.

@@ -428,7 +428,9 @@ func writeKubeconfig(t *testing.T, content string) string {
 	if _, err := f.WriteString(content); err != nil {
 		t.Fatalf("writing kubeconfig: %v", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatalf("closing kubeconfig: %v", err)
+	}
 	return f.Name()
 }
 
@@ -495,7 +497,7 @@ func TestLoadKubeContextNames_ConnectivityCheck(t *testing.T) {
 	// reachable: a local HTTP server that responds 200 to /readyz
 	reachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
+		_, _ = fmt.Fprint(w, "ok")
 	}))
 	defer reachable.Close()
 
