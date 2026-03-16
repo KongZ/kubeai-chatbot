@@ -34,6 +34,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
+	"github.com/KongZ/kubeai-chatbot/pkg/skills"
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
 	"github.com/google/uuid"
 	"k8s.io/klog/v2"
@@ -135,6 +136,9 @@ type Agent struct {
 
 	// EnvVars holds environment variables that should be passed to tools
 	EnvVars map[string]string
+
+	// SkillsRegistry holds the loaded skills for keyword matching and system prompt listing.
+	SkillsRegistry *skills.Registry
 
 	// cancel is the function to cancel the agent's context
 	cancel context.CancelFunc
@@ -274,6 +278,11 @@ func (s *Agent) Init(ctx context.Context) error {
 		kubeContexts = nil
 	}
 
+	var allSkills []skills.Skill
+	if s.SkillsRegistry != nil {
+		allSkills = s.SkillsRegistry.All()
+	}
+
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
 		Tools:                s.Tools,
 		EnableToolUseShim:    s.EnableToolUseShim,
@@ -281,6 +290,7 @@ func (s *Agent) Init(ctx context.Context) error {
 		SessionIsInteractive: true,
 		AgentName:            s.AgentName,
 		KubeContexts:         kubeContexts,
+		Skills:               allSkills,
 	})
 	if err != nil {
 		return fmt.Errorf("generating system prompt: %w", err)
@@ -379,7 +389,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				// Start the agentic loop with the initial query
 				c.setAgentState(api.AgentStateRunning)
 				c.currIteration = 0
-				c.currChatContent = []any{initialQuery}
+				c.currChatContent = []any{c.buildQueryWithSkills(initialQuery)}
 				c.pendingFunctionCalls = []ToolCallAnalysis{}
 			}
 		} else {
@@ -449,7 +459,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 
 					c.setAgentState(api.AgentStateRunning)
 					c.currIteration = 0
-					c.currChatContent = []any{query.Query}
+					c.currChatContent = []any{c.buildQueryWithSkills(query.Query)}
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
 					log.Info("Set agent state to running, will process agentic loop", "currIteration", c.currIteration, "currChatContent", len(c.currChatContent))
 				}
@@ -875,12 +885,17 @@ func (c *Agent) NewSession() (string, error) {
 	c.sessionMu.Unlock()
 
 	// Create a new chat session with the new model
+	var switchSkills []skills.Skill
+	if c.SkillsRegistry != nil {
+		switchSkills = c.SkillsRegistry.All()
+	}
 	systemPrompt, err := c.generatePrompt(context.Background(), defaultSystemPromptTemplate, PromptData{
 		Tools:                c.Tools,
 		EnableToolUseShim:    c.EnableToolUseShim,
 		ModifyResources:      c.ModifyResources,
 		SessionIsInteractive: true,
 		AgentName:            c.AgentName,
+		Skills:               switchSkills,
 	})
 	if err != nil {
 		return "", fmt.Errorf("generating system prompt for new session: %w", err)
@@ -1253,7 +1268,8 @@ type PromptData struct {
 	ModifyResources      ModifyResourcesMode
 	SessionIsInteractive bool
 	AgentName            string
-	KubeContexts         []string // context names from kubeconfig, injected at startup
+	KubeContexts         []string       // context names from kubeconfig, injected at startup
+	Skills               []skills.Skill // available skills, listed in system prompt
 }
 
 func (a *PromptData) IsReadOnly() bool    { return a.ModifyResources == ModifyResourcesModeNone }
@@ -1276,6 +1292,30 @@ func (a *PromptData) ToolsAsJSON() string {
 
 func (a *PromptData) ToolNames() string {
 	return strings.Join(a.Tools.Names(), ", ")
+}
+
+// buildQueryWithSkills prepends instructions from any auto-triggered skills to the query.
+// Skills are matched by keyword triggers in the user's message.
+func (c *Agent) buildQueryWithSkills(query string) string {
+	if c.SkillsRegistry == nil {
+		return query
+	}
+	matched := c.SkillsRegistry.Match(query)
+	if len(matched) == 0 {
+		return query
+	}
+	var sb strings.Builder
+	for _, s := range matched {
+		if s.Instructions != "" {
+			sb.WriteString("## Skill: ")
+			sb.WriteString(s.Name)
+			sb.WriteString("\n")
+			sb.WriteString(s.Instructions)
+			sb.WriteString("\n\n")
+		}
+	}
+	sb.WriteString(query)
+	return sb.String()
 }
 
 type ReActResponse struct {

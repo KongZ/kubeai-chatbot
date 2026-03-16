@@ -204,7 +204,7 @@ func validateKubectlCommand(command string) error {
 		return fmt.Errorf("port-forwarding is not allowed, please try some other alternative")
 	}
 	if isCompoundCommand(command) {
-		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not supported. Use a single standalone kubectl command instead")
+		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not allowed. Use a single standalone kubectl command instead")
 	}
 	return nil
 }
