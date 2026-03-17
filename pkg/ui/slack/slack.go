@@ -592,8 +592,7 @@ func (s *SlackUI) markdownToBlocks(text string) []slack.Block {
 					formatted = strings.TrimSpace(formatted[len(chunk):])
 				}
 				if formatted != "" {
-					b
-					locks = append(blocks, slack.NewSectionBlock(
+					blocks = append(blocks, slack.NewSectionBlock(
 						slack.NewTextBlockObject(slack.MarkdownType, formatted, false, false),
 						nil, nil,
 					))

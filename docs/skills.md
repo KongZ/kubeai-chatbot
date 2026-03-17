@@ -58,9 +58,9 @@ env:
   SKILLS_DIR: "/etc/kubeai/skills"
 ```
 
-- If `SKILLS_DIR` is unset or empty, the agent starts normally with no skills loaded (non-fatal).
-- If the directory exists but contains no `.md` files, no skills are registered.
-- If a skill file cannot be parsed, KubeAI logs a warning and skips it.
+  - If `SKILLS_DIR` is unset or empty, the agent starts normallywith no skills loaded (non-fatal).
+  - If the directory exists but contains no `.md` files, no skillsare registered.
+  - If a skill file cannot be parsed, KubeAI logs a warning andskips it.
 
 ---
 
