@@ -30,8 +30,79 @@ import (
 	"github.com/KongZ/kubeai-chatbot/internal/mocks"
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
+	"github.com/KongZ/kubeai-chatbot/pkg/skills"
 	"go.uber.org/mock/gomock"
 )
+
+func TestBuildQueryWithSkills_NilRegistry(t *testing.T) {
+	a := &Agent{SkillsRegistry: nil}
+	got := a.buildQueryWithSkills("my query")
+	if got != "my query" {
+		t.Fatalf("expected query unchanged, got %q", got)
+	}
+}
+
+func TestBuildQueryWithSkills_EmptyRegistry(t *testing.T) {
+	a := &Agent{SkillsRegistry: &skills.Registry{}}
+	got := a.buildQueryWithSkills("my query")
+	if got != "my query" {
+		t.Fatalf("expected query unchanged, got %q", got)
+	}
+}
+
+func TestBuildQueryWithSkills_NoMatch(t *testing.T) {
+	r := &skills.Registry{}
+	r.Register(skills.Skill{Name: "crashloop", Triggers: []string{"crashloop"}, Instructions: "Do X"})
+	a := &Agent{SkillsRegistry: r}
+	got := a.buildQueryWithSkills("everything looks fine")
+	if got != "everything looks fine" {
+		t.Fatalf("expected query unchanged, got %q", got)
+	}
+}
+
+func TestBuildQueryWithSkills_MatchPrependsInstructions(t *testing.T) {
+	r := &skills.Registry{}
+	r.Register(skills.Skill{Name: "crashloop", Triggers: []string{"crashloop"}, Instructions: "Step 1: describe\nStep 2: logs"})
+	a := &Agent{SkillsRegistry: r}
+	got := a.buildQueryWithSkills("my pod is in crashloop")
+	if !strings.Contains(got, "## Skill: crashloop") {
+		t.Fatalf("expected skill header in output, got %q", got)
+	}
+	if !strings.Contains(got, "Step 1: describe") {
+		t.Fatalf("expected skill instructions in output, got %q", got)
+	}
+	if !strings.HasSuffix(got, "my pod is in crashloop") {
+		t.Fatalf("expected original query at end, got %q", got)
+	}
+}
+
+func TestBuildQueryWithSkills_SkillWithNoInstructions(t *testing.T) {
+	r := &skills.Registry{}
+	r.Register(skills.Skill{Name: "empty-skill", Triggers: []string{"trigger"}, Instructions: ""})
+	a := &Agent{SkillsRegistry: r}
+	got := a.buildQueryWithSkills("trigger word here")
+	// skill has no instructions — nothing should be prepended
+	if got != "trigger word here" {
+		t.Fatalf("expected query unchanged for skill with no instructions, got %q", got)
+	}
+}
+
+func TestBuildQueryWithSkills_MultipleMatches(t *testing.T) {
+	r := &skills.Registry{}
+	r.Register(skills.Skill{Name: "skill-a", Triggers: []string{"alpha"}, Instructions: "Instructions A"})
+	r.Register(skills.Skill{Name: "skill-b", Triggers: []string{"beta"}, Instructions: "Instructions B"})
+	a := &Agent{SkillsRegistry: r}
+	got := a.buildQueryWithSkills("alpha and beta issue")
+	if !strings.Contains(got, "Instructions A") {
+		t.Fatalf("expected skill-a instructions, got %q", got)
+	}
+	if !strings.Contains(got, "Instructions B") {
+		t.Fatalf("expected skill-b instructions, got %q", got)
+	}
+	if !strings.HasSuffix(got, "alpha and beta issue") {
+		t.Fatalf("expected original query at end, got %q", got)
+	}
+}
 
 func TestHandleMetaQuery(t *testing.T) {
 	ctx := context.Background()
