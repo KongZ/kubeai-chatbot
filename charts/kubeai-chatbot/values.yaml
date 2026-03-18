@@ -11,7 +11,7 @@ image:
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.3.0"
+  tag: "0.4.0"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -161,9 +161,19 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Additional volumes on the output Deployment definition.
+# Example: mount a skills ConfigMap:
+# volumes:
+#   - name: skills
+#     configMap:
+#       name: kubeai-skills
 volumes: []
 
 # Additional volumeMounts on the output Deployment definition.
+# Example: mount a skills ConfigMap at /etc/kubeai/skills:
+# volumeMounts:
+#   - name: skills
+#     mountPath: /etc/kubeai/skills
+#     readOnly: true
 volumeMounts: []
 
 # -- Additional containers to run alongside the main kubeai-chatbot container.
@@ -217,6 +227,13 @@ env:
   ## Example: MCP_SERVERS: "fetcher=http://localhost:8090,slack=http://localhost:8091"
   #
   # MCP_SERVERS: ""
+
+  ## Skills Configuration
+  ## Path to a directory containing skill .md files (YAML frontmatter + instructions).
+  ## Mount a ConfigMap with your skill files and set SKILLS_DIR to the mount path.
+  ## Example: create a ConfigMap with key "debug-crashloop.md" and mount it below.
+  #
+  # SKILLS_DIR: "/etc/kubeai/skills"
 
   ## Authentication Configuration
   #
