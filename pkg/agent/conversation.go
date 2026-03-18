@@ -1242,7 +1242,7 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 				results <- result{name: name, err: doErr}
 				return
 			}
-			resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				results <- result{name: name, err: fmt.Errorf("/readyz returned HTTP %d", resp.StatusCode)}
 				return
