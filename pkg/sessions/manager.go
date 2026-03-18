@@ -16,8 +16,9 @@
 package sessions
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"sort"
 	"time"
 
@@ -57,7 +58,11 @@ func NewSessionManager(backend string) (*SessionManager, error) {
 }
 
 func (sm *SessionManager) NewSession(meta Metadata) (*api.Session, error) {
-	suffix := fmt.Sprintf("%04d", rand.Intn(10000))
+	n, err := rand.Int(rand.Reader, big.NewInt(10000))
+	if err != nil {
+		return nil, fmt.Errorf("generating session ID: %w", err)
+	}
+	suffix := fmt.Sprintf("%04d", n.Int64())
 	sessionID := time.Now().Format("20060102") + "-" + suffix
 	return sm.NewSessionWithID(sessionID, meta)
 }

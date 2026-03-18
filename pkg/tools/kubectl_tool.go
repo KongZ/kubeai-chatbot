@@ -144,7 +144,7 @@ func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 
 	// Execute command directly without shell
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...) //nolint:gosec // G204: kubectl is the intended command; args passed as slice, not shell-expanded
 	cmd.Env = env
 
 	stdout, err := cmd.Output()

@@ -17,13 +17,14 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -260,7 +261,7 @@ func (s *Agent) Init(ctx context.Context) error {
 		return err
 	}
 	workDir := filepath.Join(homeDir, sessions.KubeAIDirName, "agent")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(workDir, 0o750); err != nil {
 		log.Error(err, "Failed to create session working directory")
 		return err
 	}
@@ -1166,8 +1167,17 @@ func (c *Agent) handleChoice(ctx context.Context, choice *api.UserChoiceResponse
 }
 
 type kubeConfigFile struct {
+	Clusters []struct {
+		Name    string `yaml:"name"`
+		Cluster struct {
+			Server string `yaml:"server"`
+		} `yaml:"cluster"`
+	} `yaml:"clusters"`
 	Contexts []struct {
-		Name string `yaml:"name"`
+		Name    string `yaml:"name"`
+		Context struct {
+			Cluster string `yaml:"cluster"`
+		} `yaml:"context"`
 	} `yaml:"contexts"`
 }
 
@@ -1194,6 +1204,19 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 
 	log := klog.FromContext(ctx)
 
+	// Build a map from cluster name → server URL for quick lookup.
+	clusterServer := make(map[string]string, len(cfg.Clusters))
+	for _, cl := range cfg.Clusters {
+		clusterServer[cl.Name] = cl.Cluster.Server
+	}
+
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // reachability probe only
+		},
+	}
+
 	type result struct {
 		name string
 		err  error
@@ -1202,16 +1225,29 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 
 	for _, c := range cfg.Contexts {
 		name := c.Name
+		server := clusterServer[c.Context.Cluster]
 		go func() {
-			tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(tctx, "kubectl",
-				"--kubeconfig", kubeconfigPath,
-				"--context", name,
-				"get", "--raw", "/readyz",
-				"--request-timeout=5s",
-			)
-			results <- result{name: name, err: cmd.Run()}
+			if server == "" {
+				results <- result{name: name, err: fmt.Errorf("no server URL for context %s", name)}
+				return
+			}
+			url := strings.TrimRight(server, "/") + "/readyz"
+			req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if reqErr != nil {
+				results <- result{name: name, err: reqErr}
+				return
+			}
+			resp, doErr := httpClient.Do(req)
+			if doErr != nil {
+				results <- result{name: name, err: doErr}
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				results <- result{name: name, err: fmt.Errorf("/readyz returned HTTP %d", resp.StatusCode)}
+				return
+			}
+			results <- result{name: name}
 		}()
 	}
 

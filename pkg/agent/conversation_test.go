@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -561,10 +560,6 @@ func TestLoadKubeContextNames_EmptyContexts(t *testing.T) {
 }
 
 func TestLoadKubeContextNames_ConnectivityCheck(t *testing.T) {
-	if _, err := exec.LookPath("kubectl"); err != nil {
-		t.Skip("kubectl not in PATH, skipping connectivity test")
-	}
-
 	// reachable: a local HTTP server that responds 200 to /readyz
 	reachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
