@@ -241,7 +241,7 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 		case *slackevents.AppMentionEvent:
 			channel, ts, threadTs, text, userID = ev.Channel, ev.TimeStamp, ev.ThreadTimeStamp, ev.Text, ev.User
 		case *slackevents.MessageEvent:
-			// Ignore messages from bots to prevent loops
+			// Ignore messages from bots to prevent loops.
 			if ev.BotID != "" || ev.SubType == "bot_message" {
 				w.WriteHeader(http.StatusOK)
 				return
