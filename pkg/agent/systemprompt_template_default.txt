@@ -99,6 +99,14 @@ You can execute commands that modify resources automatically without requesting 
 - Only ask the user for input when the intent is genuinely ambiguous or a required value is unknown.
 {{end}}
 
+{{if .Skills}}
+## Available Skills:
+The following skills provide specialized guidance for common tasks. Apply the most relevant skill's instructions when the user's request matches:
+{{range .Skills}}- **{{.Name}}**: {{.Description}}
+{{end}}
+When a skill is relevant, follow its step-by-step instructions to handle the task.
+
+{{end}}
 ## Command Structuring Guidelines:
 **IMPORTANT:**
 - When generating kubectl commands, ALWAYS place the verb (e.g., get, apply, delete) immediately after `kubectl`.

@@ -70,7 +70,7 @@ func (f *filesystemStore) CreateSession(session *api.Session) error {
 		return fmt.Errorf("invalid session for creation: %w", err)
 	}
 	sessionPath := filepath.Join(f.basePath, session.ID)
-	if err := os.MkdirAll(sessionPath, 0o755); err != nil {
+	if err := os.MkdirAll(sessionPath, 0o750); err != nil {
 		return err
 	}
 
@@ -89,7 +89,7 @@ func (f *filesystemStore) CreateSession(session *api.Session) error {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(sessionPath, "metadata.yaml"), data, 0o644)
+	return os.WriteFile(filepath.Join(sessionPath, "metadata.yaml"), data, 0o600)
 }
 
 func (f *filesystemStore) UpdateSession(session *api.Session) error {
@@ -121,7 +121,7 @@ func (f *filesystemStore) UpdateSession(session *api.Session) error {
 		return err
 	}
 
-	return os.WriteFile(metadataPath, data, 0o644)
+	return os.WriteFile(metadataPath, data, 0o600)
 }
 
 func (f *filesystemStore) ListSessions() ([]*api.Session, error) {
@@ -181,7 +181,7 @@ func (s *FileChatMessageStore) AddChatMessage(record *api.Message) error {
 	defer s.mu.Unlock()
 
 	// Ensure directory exists
-	if err := os.MkdirAll(s.Path, 0o755); err != nil {
+	if err := os.MkdirAll(s.Path, 0o750); err != nil {
 		return err
 	}
 
@@ -213,7 +213,7 @@ func (s *FileChatMessageStore) AddChatMessage(record *api.Message) error {
 		return err
 	}
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func (s *FileChatMessageStore) ClearChatMessages() error {
 
 func (s *FileChatMessageStore) readMessages() ([]*api.Message, error) {
 	path := s.HistoryPath()
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: path derived from validated session ID and fixed filename
 	if errors.Is(err, os.ErrNotExist) {
 		return []*api.Message{}, nil
 	}
@@ -322,11 +322,11 @@ func (s *FileChatMessageStore) readMessages() ([]*api.Message, error) {
 }
 
 func (s *FileChatMessageStore) writeMessages(messages []*api.Message) error {
-	if err := os.MkdirAll(s.Path, 0o755); err != nil {
+	if err := os.MkdirAll(s.Path, 0o750); err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(s.HistoryPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(s.HistoryPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // G304: path derived from validated session ID and fixed filename
 	if err != nil {
 		return err
 	}

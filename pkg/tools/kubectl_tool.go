@@ -144,7 +144,7 @@ func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 
 	// Execute command directly without shell
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...) //nolint:gosec // G204: kubectl is the intended command; args passed as slice, not shell-expanded
 	cmd.Env = env
 
 	stdout, err := cmd.Output()
@@ -204,7 +204,7 @@ func validateKubectlCommand(command string) error {
 		return fmt.Errorf("port-forwarding is not allowed, please try some other alternative")
 	}
 	if isCompoundCommand(command) {
-		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not supported. Use a single standalone kubectl command instead")
+		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not allowed. Use a single standalone kubectl command instead")
 	}
 	return nil
 }

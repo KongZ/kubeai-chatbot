@@ -17,13 +17,14 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,6 +35,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
+	"github.com/KongZ/kubeai-chatbot/pkg/skills"
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
 	"github.com/google/uuid"
 	"k8s.io/klog/v2"
@@ -135,6 +137,9 @@ type Agent struct {
 
 	// EnvVars holds environment variables that should be passed to tools
 	EnvVars map[string]string
+
+	// SkillsRegistry holds the loaded skills for keyword matching and system prompt listing.
+	SkillsRegistry *skills.Registry
 
 	// cancel is the function to cancel the agent's context
 	cancel context.CancelFunc
@@ -256,7 +261,7 @@ func (s *Agent) Init(ctx context.Context) error {
 		return err
 	}
 	workDir := filepath.Join(homeDir, sessions.KubeAIDirName, "agent")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(workDir, 0o750); err != nil {
 		log.Error(err, "Failed to create session working directory")
 		return err
 	}
@@ -274,6 +279,11 @@ func (s *Agent) Init(ctx context.Context) error {
 		kubeContexts = nil
 	}
 
+	var allSkills []skills.Skill
+	if s.SkillsRegistry != nil {
+		allSkills = s.SkillsRegistry.All()
+	}
+
 	systemPrompt, err := s.generatePrompt(ctx, defaultSystemPromptTemplate, PromptData{
 		Tools:                s.Tools,
 		EnableToolUseShim:    s.EnableToolUseShim,
@@ -281,6 +291,7 @@ func (s *Agent) Init(ctx context.Context) error {
 		SessionIsInteractive: true,
 		AgentName:            s.AgentName,
 		KubeContexts:         kubeContexts,
+		Skills:               allSkills,
 	})
 	if err != nil {
 		return fmt.Errorf("generating system prompt: %w", err)
@@ -379,7 +390,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				// Start the agentic loop with the initial query
 				c.setAgentState(api.AgentStateRunning)
 				c.currIteration = 0
-				c.currChatContent = []any{initialQuery}
+				c.currChatContent = []any{c.buildQueryWithSkills(initialQuery)}
 				c.pendingFunctionCalls = []ToolCallAnalysis{}
 			}
 		} else {
@@ -449,7 +460,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 
 					c.setAgentState(api.AgentStateRunning)
 					c.currIteration = 0
-					c.currChatContent = []any{query.Query}
+					c.currChatContent = []any{c.buildQueryWithSkills(query.Query)}
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
 					log.Info("Set agent state to running, will process agentic loop", "currIteration", c.currIteration, "currChatContent", len(c.currChatContent))
 				}
@@ -875,12 +886,17 @@ func (c *Agent) NewSession() (string, error) {
 	c.sessionMu.Unlock()
 
 	// Create a new chat session with the new model
+	var switchSkills []skills.Skill
+	if c.SkillsRegistry != nil {
+		switchSkills = c.SkillsRegistry.All()
+	}
 	systemPrompt, err := c.generatePrompt(context.Background(), defaultSystemPromptTemplate, PromptData{
 		Tools:                c.Tools,
 		EnableToolUseShim:    c.EnableToolUseShim,
 		ModifyResources:      c.ModifyResources,
 		SessionIsInteractive: true,
 		AgentName:            c.AgentName,
+		Skills:               switchSkills,
 	})
 	if err != nil {
 		return "", fmt.Errorf("generating system prompt for new session: %w", err)
@@ -1151,8 +1167,17 @@ func (c *Agent) handleChoice(ctx context.Context, choice *api.UserChoiceResponse
 }
 
 type kubeConfigFile struct {
+	Clusters []struct {
+		Name    string `yaml:"name"`
+		Cluster struct {
+			Server string `yaml:"server"`
+		} `yaml:"cluster"`
+	} `yaml:"clusters"`
 	Contexts []struct {
-		Name string `yaml:"name"`
+		Name    string `yaml:"name"`
+		Context struct {
+			Cluster string `yaml:"cluster"`
+		} `yaml:"context"`
 	} `yaml:"contexts"`
 }
 
@@ -1179,6 +1204,19 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 
 	log := klog.FromContext(ctx)
 
+	// Build a map from cluster name → server URL for quick lookup.
+	clusterServer := make(map[string]string, len(cfg.Clusters))
+	for _, cl := range cfg.Clusters {
+		clusterServer[cl.Name] = cl.Cluster.Server
+	}
+
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // reachability probe only
+		},
+	}
+
 	type result struct {
 		name string
 		err  error
@@ -1187,16 +1225,29 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 
 	for _, c := range cfg.Contexts {
 		name := c.Name
+		server := clusterServer[c.Context.Cluster]
 		go func() {
-			tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(tctx, "kubectl",
-				"--kubeconfig", kubeconfigPath,
-				"--context", name,
-				"get", "--raw", "/readyz",
-				"--request-timeout=5s",
-			)
-			results <- result{name: name, err: cmd.Run()}
+			if server == "" {
+				results <- result{name: name, err: fmt.Errorf("no server URL for context %s", name)}
+				return
+			}
+			url := strings.TrimRight(server, "/") + "/readyz"
+			req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if reqErr != nil {
+				results <- result{name: name, err: reqErr}
+				return
+			}
+			resp, doErr := httpClient.Do(req)
+			if doErr != nil {
+				results <- result{name: name, err: doErr}
+				return
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusOK {
+				results <- result{name: name, err: fmt.Errorf("/readyz returned HTTP %d", resp.StatusCode)}
+				return
+			}
+			results <- result{name: name}
 		}()
 	}
 
@@ -1253,7 +1304,8 @@ type PromptData struct {
 	ModifyResources      ModifyResourcesMode
 	SessionIsInteractive bool
 	AgentName            string
-	KubeContexts         []string // context names from kubeconfig, injected at startup
+	KubeContexts         []string       // context names from kubeconfig, injected at startup
+	Skills               []skills.Skill // available skills, listed in system prompt
 }
 
 func (a *PromptData) IsReadOnly() bool    { return a.ModifyResources == ModifyResourcesModeNone }
@@ -1276,6 +1328,30 @@ func (a *PromptData) ToolsAsJSON() string {
 
 func (a *PromptData) ToolNames() string {
 	return strings.Join(a.Tools.Names(), ", ")
+}
+
+// buildQueryWithSkills prepends instructions from any auto-triggered skills to the query.
+// Skills are matched by keyword triggers in the user's message.
+func (c *Agent) buildQueryWithSkills(query string) string {
+	if c.SkillsRegistry == nil {
+		return query
+	}
+	matched := c.SkillsRegistry.Match(query)
+	if len(matched) == 0 {
+		return query
+	}
+	var sb strings.Builder
+	for _, s := range matched {
+		if s.Instructions != "" {
+			sb.WriteString("## Skill: ")
+			sb.WriteString(s.Name)
+			sb.WriteString("\n")
+			sb.WriteString(s.Instructions)
+			sb.WriteString("\n\n")
+		}
+	}
+	sb.WriteString(query)
+	return sb.String()
 }
 
 type ReActResponse struct {

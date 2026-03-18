@@ -31,6 +31,7 @@ import (
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/KongZ/kubeai-chatbot/pkg/mcp"
 	"github.com/KongZ/kubeai-chatbot/pkg/sessions"
+	"github.com/KongZ/kubeai-chatbot/pkg/skills"
 	"github.com/KongZ/kubeai-chatbot/pkg/tools"
 	"github.com/KongZ/kubeai-chatbot/pkg/ui"
 	"github.com/KongZ/kubeai-chatbot/pkg/ui/slack"
@@ -105,6 +106,20 @@ func run(ctx context.Context) error {
 		}
 	}()
 
+	// Initialize skills registry (optional; non-fatal if SKILLS_DIR is unset or empty)
+	skillsRegistry := &skills.Registry{}
+	if skillsDir := getEnv("SKILLS_DIR", ""); skillsDir != "" {
+		loaded, skillsErr := skills.LoadFromDir(skillsDir)
+		if skillsErr != nil {
+			klog.Warningf("Skills initialization failed: %v — continuing without skills", skillsErr)
+		} else {
+			for _, s := range loaded {
+				skillsRegistry.Register(s)
+			}
+			klog.Infof("Loaded %d skill(s) from %s", len(loaded), skillsDir)
+		}
+	}
+
 	// Initialize MCP manager (optional; non-fatal if MCP_SERVERS is unset or fails)
 	var mcpManager *mcp.Manager
 	if mcpServersEnv := getEnv("MCP_SERVERS", ""); mcpServersEnv != "" {
@@ -145,6 +160,7 @@ func run(ctx context.Context) error {
 			SessionBackend:  sessionType,
 			AgentName:       agentName,
 			ModifyResources: modifyResources,
+			SkillsRegistry:  skillsRegistry,
 		}, nil
 	}
 
