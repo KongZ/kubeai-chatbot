@@ -6,13 +6,23 @@ triggers:
   - piggysec
   - piggy-env
   - piggy-webhooks
-  - install-piggy-env
   - PIGGY_ALLOWED_SA
   - secrets injection
   - secret manager
+  - decision not allowed
+  - install-piggy-env
+  - piggysec.com
+  - piggy-initial-delay
+  - piggy-enforce-integrity
+  - piggy-ignore-no-env
+  - piggy-number-of-retry
+  - piggy-address
+  - piggy-aws-secret-name
 ---
 
 Piggy is a Kubernetes mutating admission webhook that injects AWS Secrets Manager secrets into pod environments via a `piggy-env` init container. Follow this step-by-step diagnostic process.
+
+> **Note:** Piggy is configured entirely through **Kubernetes annotations** and **environment variables** on the `piggy-webhooks` deployment. There are no CRDs, no PiggyPolicy resources. All configuration is annotation-based.
 
 ## How Piggy Works (Context)
 
@@ -22,7 +32,8 @@ When a pod is created:
   2. Piggy Webhooks injects an `install-piggy-env` init container into the pod.
   3. At runtime, `piggy-env` starts and contacts Piggy Webhooks over TLS, sending the pod's service account token, pod name, and a command signature (SHA256).
   4. Piggy Webhooks validates credentials via the Kubernetes Token Review API, exchanges the service account token for temporary AWS credentials via STS, then fetches secrets from AWS Secrets Manager.
-  5. `piggy-env` receives the secrets and replaces any environment variable prefixed with `piggy:` with the real value.
+  5. Piggy Webhooks checks the `PIGGY_ALLOWED_SA` field in the secret. If the pod's service account (`<namespace>:<service-account>`) is listed there, the request is authorized and the secret is returned. If the service account is **not** listed, Piggy Webhooks rejects the request and logs `"decision not allowed"`. The pod (`piggy-env`) receives no secret and retries according to `piggysec.com/piggy-number-of-retry`; retry attempts appear in the pod logs.
+  6. `piggy-env` receives the secrets and replaces any environment variable prefixed with `piggy:` with the real value.
 
 ## Diagnostic Steps
 
@@ -32,11 +43,17 @@ When a pod is created:
 kubectl describe pod <pod-name> -n <namespace> --context <ctx>
 ```
 
+A pod has been mutated by Piggy if **any** of the following are present:
+
+  - The `install-piggy-env` init container appears in `Init Containers:`
+  - The annotation `piggysec.com/piggy-uid` is set on the pod
+  - The environment variable `PIGGY_UID` is injected into the application container
+
 Look for the `install-piggy-env` init container in `Init Containers:`:
 
   - `Exit Code: 0` — init container succeeded; continue to Step 2.
   - Non-zero `Exit Code` or `State: Waiting` — init container failed; see Troubleshooting below.
-  - No `install-piggy-env` container at all — pod was never mutated; see "Pod Not Mutated" below.
+  - No `install-piggy-env` container, no `piggysec.com/piggy-uid` annotation, and no `PIGGY_UID` env var — pod was never mutated; see "Pod Not Mutated" below.
 
 Also check that your application container's `Command` starts with `/piggy/piggy-env`:
 
