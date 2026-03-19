@@ -133,11 +133,24 @@ func TestLoadFromDir_MultipleSkills(t *testing.T) {
 	assert.Contains(t, names, "skill-b")
 }
 
-func TestLoadFromDir_SkipsSubdirectories(t *testing.T) {
+func TestLoadFromDir_LoadsSubdirectories(t *testing.T) {
 	dir := t.TempDir()
-	subdir := filepath.Join(dir, "subdir")
+	subdir := filepath.Join(dir, "custom")
 	require.NoError(t, os.Mkdir(subdir, 0o755))
 	writeSkillFile(t, subdir, "nested.md", "---\nname: nested\n---\nBody.")
+
+	loaded, err := LoadFromDir(dir)
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "nested", loaded[0].Name)
+}
+
+func TestLoadFromDir_SkipsDeepSubdirectories(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "custom")
+	deepdir := filepath.Join(subdir, "deep")
+	require.NoError(t, os.MkdirAll(deepdir, 0o755))
+	writeSkillFile(t, deepdir, "deep.md", "---\nname: deep\n---\nBody.")
 
 	loaded, err := LoadFromDir(dir)
 	require.NoError(t, err)
