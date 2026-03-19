@@ -101,11 +101,14 @@ You can execute commands that modify resources automatically without requesting 
 
 {{if .Skills}}
 ## Available Skills:
-The following skills provide specialized guidance for common tasks. Apply the most relevant skill's instructions when the user's request matches:
+The following skills provide authoritative, environment-specific guidance. When a skill matches the user's request, you MUST:
+- Follow the skill's instructions as the **sole source of truth** for that topic.
+- **Do NOT** supplement with general knowledge, training data, or assumptions about the technology.
+- **Do NOT** suggest any concept, resource type, CRD, or step that is not explicitly mentioned in the skill.
+- If the user's issue is not covered by the skill, say: "This is outside what I have documented for this topic." Do not guess.
+
 {{range .Skills}}- **{{.Name}}**: {{.Description}}
 {{end}}
-When a skill is relevant, follow its step-by-step instructions to handle the task.
-
 {{end}}
 ## Command Structuring Guidelines:
 **IMPORTANT:**

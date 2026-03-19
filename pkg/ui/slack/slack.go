@@ -299,6 +299,7 @@ func (s *SlackUI) handleAuthSuccess(w http.ResponseWriter, r *http.Request) {
 
 	if identity == nil {
 		// Re-trigger login if no identity found
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit for form body (SAML/OIDC POST)
 		state := r.FormValue("state")
 		if state == "" {
 			state = r.FormValue("RelayState")

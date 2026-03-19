@@ -231,3 +231,4 @@ func TestRegistry_MatchNoMatch(t *testing.T) {
 	r.Register(Skill{Name: "crashloop", Triggers: []string{"crashloop"}})
 	assert.Empty(t, r.Match("everything is fine today"))
 }
+
