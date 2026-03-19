@@ -70,6 +70,7 @@ RUN groupadd -g 1000 kubeai && \
     chown -R kubeai:kubeai /home/kubeai
 
 COPY --from=builder /src/kubeai-chatbot /bin/kubeai-chatbot
+COPY skills/ /home/kubeai/skills/
 RUN ln -sf /opt/tools/kubectl/bin/kubectl /bin/kubectl
 
 USER kubeai
