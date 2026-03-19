@@ -161,18 +161,18 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Additional volumes on the output Deployment definition.
-# Example: mount a skills ConfigMap:
+# Example: mount a skills ConfigMap as a subfolder inside the built-in skills directory:
 # volumes:
-#   - name: skills
+#   - name: custom-skills
 #     configMap:
-#       name: kubeai-skills
+#       name: kubeai-custom-skills
 volumes: []
 
 # Additional volumeMounts on the output Deployment definition.
-# Example: mount a skills ConfigMap at /etc/kubeai/skills:
+# Example: mount custom skills into a subfolder so built-in skills are preserved:
 # volumeMounts:
-#   - name: skills
-#     mountPath: /etc/kubeai/skills
+#   - name: custom-skills
+#     mountPath: /home/kubeai/skills/custom
 #     readOnly: true
 volumeMounts: []
 
@@ -229,11 +229,12 @@ env:
   # MCP_SERVERS: ""
 
   ## Skills Configuration
-  ## Path to a directory containing skill .md files (YAML frontmatter + instructions).
-  ## Mount a ConfigMap with your skill files and set SKILLS_DIR to the mount path.
-  ## Example: create a ConfigMap with key "debug-crashloop.md" and mount it below.
+  ## Path to the skills directory. Skills are loaded from .md files in this directory
+  ## and one level of subdirectories. Built-in skills ship with the image at this path.
+  ## Mount a ConfigMap into a subdirectory (e.g. /home/kubeai/skills/custom) to add
+  ## custom skills without overwriting the built-in ones.
   #
-  # SKILLS_DIR: "/etc/kubeai/skills"
+  # SKILLS_DIR: "/home/kubeai/skills"
 
   ## Authentication Configuration
   #

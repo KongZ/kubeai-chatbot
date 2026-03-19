@@ -38,7 +38,27 @@ func LoadFromDir(dir string) ([]Skill, error) {
 
 	var result []Skill
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+		if entry.IsDir() {
+			subEntries, err := os.ReadDir(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("reading skills subdirectory %s: %w", entry.Name(), err)
+			}
+			for _, subEntry := range subEntries {
+				if subEntry.IsDir() || !strings.HasSuffix(subEntry.Name(), ".md") {
+					continue
+				}
+				skill, err := loadFile(filepath.Join(dir, entry.Name(), subEntry.Name()))
+				if err != nil {
+					return nil, fmt.Errorf("loading skill %s/%s: %w", entry.Name(), subEntry.Name(), err)
+				}
+				if skill.Name == "" {
+					continue
+				}
+				result = append(result, skill)
+			}
+			continue
+		}
+		if !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
 		skill, err := loadFile(filepath.Join(dir, entry.Name()))
