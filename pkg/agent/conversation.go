@@ -102,6 +102,9 @@ type Agent struct {
 
 	SkipPermissions bool
 
+	// EnableAWSTool controls whether the AWS CLI tool is registered.
+	EnableAWSTool bool
+
 	Tools tools.Tools
 
 	EnableToolUseShim bool
@@ -270,8 +273,11 @@ func (s *Agent) Init(ctx context.Context) error {
 
 	s.workDir = workDir
 
-	// Register kubectl tool
+	// Register tools
 	s.Tools.RegisterTool(tools.NewKubectlTool())
+	if s.EnableAWSTool {
+		s.Tools.RegisterTool(tools.NewAWSTool())
+	}
 
 	kubeContexts, err := loadKubeContextNames(ctx, s.Kubeconfig)
 	if err != nil {
@@ -392,11 +398,6 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				c.currIteration = 0
 				c.currChatContent = []any{c.buildQueryWithSkills(initialQuery)}
 				c.pendingFunctionCalls = []ToolCallAnalysis{}
-			}
-		} else {
-			if len(c.Session.Messages) == 0 {
-				// Starting new session
-				c.addMessage(api.MessageSourceAgent, api.MessageTypeText, "Hey there, what can I help you with today?")
 			}
 		}
 		c.lastErr = nil
@@ -923,6 +924,9 @@ func (c *Agent) NewSession() (string, error) {
 	}
 	if !found {
 		c.Tools.RegisterTool(tools.NewKubectlTool())
+		if c.EnableAWSTool {
+			c.Tools.RegisterTool(tools.NewAWSTool())
+		}
 	}
 
 	if err := c.llmChat.Initialize(c.Session.ChatMessageStore.ChatMessages()); err != nil {

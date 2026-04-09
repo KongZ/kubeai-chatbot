@@ -88,6 +88,7 @@ func run(ctx context.Context) error {
 	uiType := getEnv("UI_TYPE", "slack")
 	sessionType := getEnv("SESSION_TYPE", "memory")
 	modifyResources := parseModifyResourcesMode(getEnv("MODIFY_RESOURCES", "none"))
+	enableAWSTool := getEnv("ENABLE_AWS_TOOL", "false") == "true"
 
 	klog.Infof("Starting kubeai-chatbot (version: %s, commit: %s, date: %s)", version, commit, date)
 	klog.Infof("Configuration: provider=%s, model=%s, listen=%s", providerID, modelID, listenAddress)
@@ -160,6 +161,7 @@ func run(ctx context.Context) error {
 			SessionBackend:  sessionType,
 			AgentName:       agentName,
 			ModifyResources: modifyResources,
+			EnableAWSTool:   enableAWSTool,
 			SkillsRegistry:  skillsRegistry,
 		}, nil
 	}
