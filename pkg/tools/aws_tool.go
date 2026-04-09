@@ -17,12 +17,9 @@ package tools
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
-	"mvdan.cc/sh/v3/shell"
 )
 
 type AWS struct{}
@@ -50,77 +47,32 @@ func (t *AWS) FunctionDefinition() *gollm.FunctionDefinition {
 					Type:        gollm.TypeString,
 					Description: `The complete AWS CLI command to execute. Include the aws prefix (e.g. "aws ec2 describe-instances --region ap-southeast-1").`,
 				},
-				"modifies_resource": {
-					Type: gollm.TypeString,
-					Description: `Whether the command modifies an AWS resource.
-Possible values:
-- "yes" if the command modifies a resource
-- "no" if the command does not modify a resource
-- "unknown" if the command's effect on the resource is unknown`,
-				},
+				"modifies_resource": modifiesResourceParamSchema("an AWS"),
 			},
 		},
 	}
 }
 
 func (t *AWS) Run(ctx context.Context, args map[string]any) (any, error) {
-	commandVal, ok := args["command"]
-	if !ok || commandVal == nil {
-		return &ExecResult{Command: "", Error: "aws command not provided or is nil"}, nil
-	}
-
-	command, ok := commandVal.(string)
+	command, ok := commandStringFromArgs(args)
 	if !ok {
-		return &ExecResult{Command: "", Error: "aws command must be a string"}, nil
+		return &ExecResult{Command: "", Error: "aws command not provided or is nil"}, nil
 	}
 
 	if err := validateAWSCommand(command); err != nil {
 		return &ExecResult{Command: command, Error: err.Error()}, nil
 	}
 
-	cmdArgs, err := shell.Fields(command, nil)
-	if err != nil {
-		return &ExecResult{Command: command, Error: fmt.Sprintf("parsing command: %v", err)}, nil
-	}
-	if len(cmdArgs) == 0 {
-		return &ExecResult{Command: command, Error: "empty command"}, nil
+	cmdArgs, errResult := parseCommandArgs(command)
+	if errResult != nil {
+		return errResult, nil
 	}
 
-	fullCommand := strings.Join(cmdArgs, " ")
-	env := baseEnviron()
-
-	start := time.Now()
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...) //nolint:gosec // G204: aws is the intended command; args passed as slice, not shell-expanded
-	cmd.Env = env
-
-	stdout, err := cmd.Output()
-	duration := time.Since(start)
-
-	result := &ExecResult{
-		Command:  fullCommand,
-		Stdout:   string(stdout),
-		Duration: duration.String(),
-	}
-
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.Stderr = string(exitErr.Stderr)
-			result.ExitCode = exitErr.ExitCode()
-			result.Error = fmt.Sprintf("command exited with code %d", exitErr.ExitCode())
-		} else {
-			result.Error = err.Error()
-		}
-	}
-
-	return result, nil
+	return runCommand(ctx, cmdArgs, baseEnviron()), nil
 }
 
 func (t *AWS) IsInteractive(args map[string]any) (bool, error) {
-	commandVal, ok := args["command"]
-	if !ok || commandVal == nil {
-		return false, nil
-	}
-	command, ok := commandVal.(string)
+	command, ok := commandStringFromArgs(args)
 	if !ok {
 		return false, nil
 	}

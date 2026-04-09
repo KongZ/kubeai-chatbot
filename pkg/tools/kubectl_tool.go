@@ -19,14 +19,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
-	"mvdan.cc/sh/v3/shell"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -81,13 +78,7 @@ func (t *Kubectl) FunctionDefinition() *gollm.FunctionDefinition {
 					Type:        gollm.TypeString,
 					Description: `The complete kubectl command to execute. Include the kubectl prefix.`,
 				},
-				"modifies_resource": {
-					Type: gollm.TypeString,
-					Description: `Whether the command modifies a kubernetes resource.
-Possible values:
-- "yes" if the command modifies a resource
-- "no" if the command does not modify a resource
-- "unknown" if the command's effect on the resource is unknown`},
+				"modifies_resource": modifiesResourceParamSchema("a Kubernetes"),
 			},
 		},
 	}
@@ -96,27 +87,18 @@ Possible values:
 func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 	kubeconfig := ctx.Value(KubeconfigKey).(string)
 
-	commandVal, ok := args["command"]
-	if !ok || commandVal == nil {
+	command, ok := commandStringFromArgs(args)
+	if !ok {
 		return &ExecResult{Command: "", Error: "kubectl command not provided or is nil"}, nil
 	}
 
-	command, ok := commandVal.(string)
-	if !ok {
-		return &ExecResult{Command: "", Error: "kubectl command must be a string"}, nil
-	}
-
-	// Check for interactive commands
 	if err := validateKubectlCommand(command); err != nil {
 		return &ExecResult{Command: command, Error: err.Error()}, nil
 	}
 
-	cmdArgs, err := shell.Fields(command, nil)
-	if err != nil {
-		return &ExecResult{Command: command, Error: fmt.Sprintf("parsing command: %v", err)}, nil
-	}
-	if len(cmdArgs) == 0 {
-		return &ExecResult{Command: command, Error: "empty command"}, nil
+	cmdArgs, errResult := parseCommandArgs(command)
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	// Apply impersonation if identity is present
@@ -129,57 +111,23 @@ func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
 		}
 	}
 
-	// Reconstruct command for reporting
-	fullCommand := strings.Join(cmdArgs, " ")
-
-	// Prepare environment (use cached base to avoid repeated syscalls)
 	env := baseEnviron()
 	if kubeconfig != "" {
-		kubeconfig, err := ExpandShellVar(kubeconfig)
+		expanded, err := ExpandShellVar(kubeconfig)
 		if err != nil {
-			return &ExecResult{Command: fullCommand, Error: err.Error()}, nil
+			return &ExecResult{Command: strings.Join(cmdArgs, " "), Error: err.Error()}, nil
 		}
-		env = append(env, "KUBECONFIG="+kubeconfig)
+		env = append(env, "KUBECONFIG="+expanded)
 	}
 
-	// Execute command directly without shell
-	start := time.Now()
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...) //nolint:gosec // G204: kubectl is the intended command; args passed as slice, not shell-expanded
-	cmd.Env = env
-
-	stdout, err := cmd.Output()
-	duration := time.Since(start)
-
-	result := &ExecResult{
-		Command:  fullCommand,
-		Stdout:   string(stdout),
-		Duration: duration.String(),
-	}
-
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.Stderr = string(exitErr.Stderr)
-			result.ExitCode = exitErr.ExitCode()
-			result.Error = fmt.Sprintf("command exited with code %d", exitErr.ExitCode())
-		} else {
-			result.Error = err.Error()
-		}
-	}
-
-	return result, nil
+	return runCommand(ctx, cmdArgs, env), nil
 }
 
 func (t *Kubectl) IsInteractive(args map[string]any) (bool, error) {
-	commandVal, ok := args["command"]
-	if !ok || commandVal == nil {
-		return false, nil
-	}
-
-	command, ok := commandVal.(string)
+	command, ok := commandStringFromArgs(args)
 	if !ok {
 		return false, nil
 	}
-
 	return IsInteractiveCommand(command)
 }
 
