@@ -444,6 +444,12 @@ kubectl exec -it deployment/kubeai-chatbot -n kubeai-chatbot -- aws eks describe
 
 ---
 
+## AWS command-line tool
+
+If you also want KubeAI to run `aws` commands (e.g. `aws eks describe-cluster`, `aws ec2 describe-instances`) in addition to `kubectl`, see [aws_cli_tool.md](aws_cli_tool.md). That guide covers enabling the tool, required IAM permissions, and cross-account AWS CLI access via named profiles.
+
+---
+
 ## References
 
   - [EKS IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latestuserguide/iam-roles-for-service-accounts.html)

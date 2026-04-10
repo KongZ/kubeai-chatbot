@@ -174,11 +174,7 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	// Expect greeting and prompt inline (UI-driven startup)
-	m1 := recvMsg(t, ctx, a.Output)
-	if m1.Type != api.MessageTypeText || m1.Source != api.MessageSourceAgent {
-		t.Fatalf("expected greeting text from agent, got type=%v source=%v", m1.Type, m1.Source)
-	}
+	// Expect prompt (UI-driven startup)
 	m2 := recvMsg(t, ctx, a.Output)
 	if m2.Type != api.MessageTypeUserInputRequest {
 		t.Fatalf("expected user-input-request, got %v", m2.Type)
@@ -388,8 +384,7 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	// Skip greeting
-	_ = recvMsg(t, ctx, a.Output)
+	// Wait for user-input-request
 	_ = recvMsg(t, ctx, a.Output)
 
 	// Send a query
