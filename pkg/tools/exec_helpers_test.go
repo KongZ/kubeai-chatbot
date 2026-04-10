@@ -49,6 +49,21 @@ func TestCommandStringFromArgs_WrongType(t *testing.T) {
 	assert.Empty(t, s)
 }
 
+// --- cliToolFunctionDefinition ---
+
+func TestCLIToolFunctionDefinition(t *testing.T) {
+	fd := cliToolFunctionDefinition("mytool", "does stuff", "run mytool <cmd>", "a My")
+	assert.Equal(t, "mytool", fd.Name)
+	assert.Equal(t, "does stuff", fd.Description)
+	require.NotNil(t, fd.Parameters)
+	cmd := fd.Parameters.Properties["command"]
+	require.NotNil(t, cmd)
+	assert.Equal(t, "run mytool <cmd>", cmd.Description)
+	mod := fd.Parameters.Properties["modifies_resource"]
+	require.NotNil(t, mod)
+	assert.Contains(t, mod.Description, "a My")
+}
+
 // --- modifiesResourceParamSchema ---
 
 func TestModifiesResourceParamSchema_ContainsLabel(t *testing.T) {

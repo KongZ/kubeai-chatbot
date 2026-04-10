@@ -1,6 +1,6 @@
-# AWS CLI Tool
+# AWS command-line tool
 
-The AWS CLI tool allows KubeAI to run `aws` commands against AWS resources on behalf of the user. It follows the same execution model as the kubectl tool — commands are parsed and executed directly without a shell, preventing injection attacks.
+The AWS command-line tool allows KubeAI to run `aws` commands against AWS resources on behalf of the user. It follows the same execution model as the kubectl tool — commands are parsed and executed directly without a shell, preventing injection attacks.
 
 ---
 
@@ -260,7 +260,7 @@ volumeMounts:
 
 Users instruct KubeAI to use Account B by specifying the profile in their message:
 
-```
+```bash
 Show me all EC2 instances in Account B using profile account-b
 ```
 

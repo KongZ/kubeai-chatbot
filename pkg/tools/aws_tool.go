@@ -37,20 +37,12 @@ func (t *AWS) Description() string {
 }
 
 func (t *AWS) FunctionDefinition() *gollm.FunctionDefinition {
-	return &gollm.FunctionDefinition{
-		Name:        t.Name(),
-		Description: t.Description(),
-		Parameters: &gollm.Schema{
-			Type: gollm.TypeObject,
-			Properties: map[string]*gollm.Schema{
-				"command": {
-					Type:        gollm.TypeString,
-					Description: `The complete AWS CLI command to execute. Include the aws prefix (e.g. "aws ec2 describe-instances --region ap-southeast-1").`,
-				},
-				"modifies_resource": modifiesResourceParamSchema("an AWS"),
-			},
-		},
-	}
+	return cliToolFunctionDefinition(
+		t.Name(),
+		t.Description(),
+		`The complete AWS CLI command to execute. Include the aws prefix (e.g. "aws ec2 describe-instances --region ap-southeast-1").`,
+		"an AWS",
+	)
 }
 
 func (t *AWS) Run(ctx context.Context, args map[string]any) (any, error) {

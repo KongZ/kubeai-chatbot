@@ -36,6 +36,27 @@ func commandStringFromArgs(args map[string]any) (string, bool) {
 	return s, ok
 }
 
+// cliToolFunctionDefinition builds the standard FunctionDefinition for a CLI
+// tool that takes a "command" string and a "modifies_resource" flag.
+// commandDescription describes the expected format of the command argument.
+// resourceLabel is inserted into the modifies_resource description (e.g. "a Kubernetes", "an AWS").
+func cliToolFunctionDefinition(name, description, commandDescription, resourceLabel string) *gollm.FunctionDefinition {
+	return &gollm.FunctionDefinition{
+		Name:        name,
+		Description: description,
+		Parameters: &gollm.Schema{
+			Type: gollm.TypeObject,
+			Properties: map[string]*gollm.Schema{
+				"command": {
+					Type:        gollm.TypeString,
+					Description: commandDescription,
+				},
+				"modifies_resource": modifiesResourceParamSchema(resourceLabel),
+			},
+		},
+	}
+}
+
 // modifiesResourceParamSchema returns the standard modifies_resource parameter
 // schema shared by CLI tools. resourceLabel is used in the description
 // (e.g. "a Kubernetes", "an AWS").

@@ -68,20 +68,12 @@ func (t *Kubectl) Description() string {
 }
 
 func (t *Kubectl) FunctionDefinition() *gollm.FunctionDefinition {
-	return &gollm.FunctionDefinition{
-		Name:        t.Name(),
-		Description: t.Description(),
-		Parameters: &gollm.Schema{
-			Type: gollm.TypeObject,
-			Properties: map[string]*gollm.Schema{
-				"command": {
-					Type:        gollm.TypeString,
-					Description: `The complete kubectl command to execute. Include the kubectl prefix.`,
-				},
-				"modifies_resource": modifiesResourceParamSchema("a Kubernetes"),
-			},
-		},
-	}
+	return cliToolFunctionDefinition(
+		t.Name(),
+		t.Description(),
+		`The complete kubectl command to execute. Include the kubectl prefix.`,
+		"a Kubernetes",
+	)
 }
 
 func (t *Kubectl) Run(ctx context.Context, args map[string]any) (any, error) {
