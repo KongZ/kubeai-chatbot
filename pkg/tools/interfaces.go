@@ -21,6 +21,13 @@ import (
 	"github.com/KongZ/kubeai-chatbot/gollm"
 )
 
+// ToolWithWaitMessage is an optional interface a Tool can implement to emit
+// a user-facing notice before its Run method is called. Useful for tools with
+// long execution times where silence would otherwise look like a hang.
+type ToolWithWaitMessage interface {
+	WaitMessage() string
+}
+
 type Tool interface {
 	// Name is the identifier for the tool; we pass this to the LLM.
 	// The LLM uses this name when it wants to invoke the tool.

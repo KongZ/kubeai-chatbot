@@ -218,6 +218,47 @@ func TestAgent_Init_NoSharedToolsState(t *testing.T) {
 	t.Logf("✓ %d agents initialized concurrently with isolated Tools", numAgents)
 }
 
+// TestAgent_Init_AWSDevOpsAgentTool verifies that the aws_devops_agent tool is
+// registered when EnableAWSDevOpsAgentTool is true and absent otherwise.
+func TestAgent_Init_AWSDevOpsAgentTool(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "enabled", false: "disabled"}[enabled], func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockClient := mocks.NewMockClient(ctrl)
+			mockChat := mocks.NewMockChat(ctrl)
+			mockClient.EXPECT().StartChat(gomock.Any(), gomock.Any()).Return(mockChat)
+			mockChat.EXPECT().Initialize(gomock.Any()).Return(nil)
+			mockChat.EXPECT().SetFunctionDefinitions(gomock.Any()).Return(nil)
+
+			session := &api.Session{
+				ID:               "test-session",
+				AgentState:       api.AgentStateIdle,
+				ChatMessageStore: sessions.NewInMemoryChatStore(),
+			}
+			a := &Agent{
+				SessionBackend:           "memory",
+				LLM:                      mockClient,
+				Session:                  session,
+				EnableAWSDevOpsAgentTool: enabled,
+			}
+			a.Tools.Init()
+			if err := a.Init(context.Background()); err != nil {
+				t.Fatalf("Init failed: %v", err)
+			}
+
+			got := a.Tools.Lookup("aws_devops_agent")
+			if enabled && got == nil {
+				t.Error("aws_devops_agent should be registered when EnableAWSDevOpsAgentTool=true")
+			}
+			if !enabled && got != nil {
+				t.Error("aws_devops_agent should NOT be registered when EnableAWSDevOpsAgentTool=false")
+			}
+		})
+	}
+}
+
 // TestTools_RegisterTool_DuplicateHandling verifies that registering
 // the same tool twice doesn't cause a panic.
 func TestTools_RegisterTool_DuplicateHandling(t *testing.T) {

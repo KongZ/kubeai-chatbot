@@ -105,6 +105,9 @@ type Agent struct {
 	// EnableAWSTool controls whether the AWS CLI tool is registered.
 	EnableAWSTool bool
 
+	// EnableAWSDevOpsAgentTool controls whether the AWS DevOps Agent tool is registered.
+	EnableAWSDevOpsAgentTool bool
+
 	Tools tools.Tools
 
 	EnableToolUseShim bool
@@ -277,6 +280,9 @@ func (s *Agent) Init(ctx context.Context) error {
 	s.Tools.RegisterTool(tools.NewKubectlTool())
 	if s.EnableAWSTool {
 		s.Tools.RegisterTool(tools.NewAWSTool())
+	}
+	if s.EnableAWSDevOpsAgentTool {
+		s.Tools.RegisterTool(tools.NewAWSDevOpsAgentTool())
 	}
 
 	kubeContexts, err := loadKubeContextNames(ctx, s.Kubeconfig)
@@ -927,6 +933,9 @@ func (c *Agent) NewSession() (string, error) {
 		if c.EnableAWSTool {
 			c.Tools.RegisterTool(tools.NewAWSTool())
 		}
+		if c.EnableAWSDevOpsAgentTool {
+			c.Tools.RegisterTool(tools.NewAWSDevOpsAgentTool())
+		}
 	}
 
 	if err := c.llmChat.Initialize(c.Session.ChatMessageStore.ChatMessages()); err != nil {
@@ -1055,6 +1064,12 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 		toolDescription := call.ParsedToolCall.Description()
 
 		c.addMessage(api.MessageSourceModel, api.MessageTypeToolCallRequest, toolDescription)
+
+		if wm, ok := call.ParsedToolCall.GetTool().(tools.ToolWithWaitMessage); ok {
+			if msg := wm.WaitMessage(); msg != "" {
+				c.addMessage(api.MessageSourceAgent, api.MessageTypeText, msg)
+			}
+		}
 
 		output, err := call.ParsedToolCall.InvokeTool(ctx, tools.InvokeToolOptions{
 			Kubeconfig: c.Kubeconfig,

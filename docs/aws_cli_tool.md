@@ -315,3 +315,161 @@ aws sts get-caller-identity --profile account-b
 
   - **Option A**: Verify Account A's OIDC provider is registered in Account B IAM (`aws iam list-open-id-connect-providers` in Account B). Verify the Account B role's trust policy references `arn:aws:iam::ACCOUNT_B_ID:oidc-provider/...` (not Account A's ARN) with the correct `sub` condition (`system:serviceaccount:<namespace>:<service-account>`).
   - **Option B**: Verify the Account B role's trust policy allows `arn:aws:iam::ACCOUNT_A_ID:role/kubeai-chatbot` to assume it, and that the Account A IRSA role has `sts:AssumeRole` permission targeting the Account B role ARN.
+
+---
+
+## AWS DevOps Agent Tool
+
+The AWS DevOps Agent tool is a second, separate tool that lets the AI consult [AWS DevOps Agent](https://aws.amazon.com/devops-guru/) for expert advice on AWS infrastructure problems. It is distinct from the `aws` CLI tool — it does not run arbitrary AWS CLI commands. Instead, it submits a natural-language question and returns AWS DevOps Agent's response.
+
+### What It Does
+
+- Executes `aws devops-agent create-chat --message <message>` internally
+- The AI composes the message; AWS DevOps Agent replies with analysis and recommendations
+- **Read-only** — never modifies any resource
+- **Slow** — responses typically take 10–30 seconds; the bot automatically notifies the user to wait
+
+### When the AI Calls It
+
+The tool's description enforces a strict escalation policy. The AI will **only** call it when **all** of the following are true:
+
+1. The question is explicitly about an AWS service (EKS, EC2, ALB/NLB, IAM, RDS, S3, VPC, CloudWatch, Route53, etc.)
+2. The `aws` CLI tool cannot answer it with a single `describe` / `list` / `get` command
+3. The AI has already attempted to gather information with `kubectl` and/or `aws` tools and still cannot resolve the issue
+
+The AI will **not** call it for:
+
+- Kubernetes-native questions (use `kubectl` instead)
+- Questions answerable by a standard `aws` read command (use the `aws` tool instead)
+- Application-level issues (crashes, misconfigurations) with no clear AWS infrastructure component
+- Any situation where `kubectl` or `aws` tools have not been tried first
+
+### Enabling the Tool
+
+The tool is **disabled by default**. Set `ENABLE_AWS_DEVOPS_AGENT_TOOL=true` in the pod's environment:
+
+```yaml
+# values.yaml
+env:
+  ENABLE_AWS_DEVOPS_AGENT_TOOL: "true"
+```
+
+Both tools can be enabled at the same time:
+
+```yaml
+env:
+  ENABLE_AWS_TOOL: "true"
+  ENABLE_AWS_DEVOPS_AGENT_TOOL: "true"
+```
+
+### IAM Permissions
+
+The IRSA role must include `devops-agent:CreateChat`. Add it to the same role used by the `aws` tool:
+
+**Minimal policy for the DevOps Agent tool only:**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AWSDevOpsAgentTool",
+      "Effect": "Allow",
+      "Action": [
+        "devops-agent:CreateChat"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+**Combined policy for both tools (recommended when both are enabled):**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AWSToolReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "elasticloadbalancing:Describe*",
+        "iam:GetRole",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "s3:ListAllMyBuckets",
+        "s3:ListBucket",
+        "rds:DescribeDBInstances",
+        "route53:ListHostedZones",
+        "route53:ListResourceRecordSets",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AWSDevOpsAgentTool",
+      "Effect": "Allow",
+      "Action": [
+        "devops-agent:CreateChat"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+> **Note:** AWS DevOps Agent must be **activated** in the AWS console before the IAM permission takes effect. The service is not available in all regions — check [AWS regional service availability](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/) for the current list.
+
+### IRSA Setup
+
+No additional IRSA wiring is needed beyond adding the `devops-agent:CreateChat` action to the existing IRSA role. The service account annotation (`eks.amazonaws.com/role-arn`) and OIDC trust policy are identical to the `aws` tool setup — follow the steps in [IAM Permissions](#iam-permissions) and [Cross-Account AWS Access](#cross-account-aws-access) above if IRSA is not already configured.
+
+### Cost Considerations
+
+- Each `create-chat` call is billed per request by AWS according to the AWS DevOps Agent pricing model
+- The tool is intentionally described to the AI as *"slow, expensive — use sparingly"* so it is only invoked as a last resort
+- **Recommendation:** enable only in environments where an active AWS DevOps Agent subscription exists and the cost is acceptable
+
+### Verify the Setup
+
+Exec into the KubeAI pod and run a test call:
+
+```bash
+kubectl exec -it deployment/kubeai-chatbot -n kubeai-chatbot -- /bin/bash
+
+aws devops-agent create-chat --message "hello"
+```
+
+A successful response returns a JSON object with a `chatId` and response content. An `AccessDenied` error means `devops-agent:CreateChat` is missing from the IRSA role policy.
+
+### Troubleshooting
+
+**`Could not connect to the endpoint URL` or `UnknownOperationException`**
+
+  - The `aws` CLI version does not support the `devops-agent` subcommand. Upgrade to the latest AWS CLI v2.
+
+**`AccessDenied` on `devops-agent:CreateChat`**
+
+  - The IRSA role policy does not include `devops-agent:CreateChat`. Add the action and wait for IAM propagation (up to 60 seconds).
+
+**`ServiceUnavailableException` or `ServiceNotActivatedException`**
+
+  - AWS DevOps Agent is not activated in this account or region. Go to the AWS console → DevOps Agent → activate the service.
+
+**`EndpointResolutionError` or no endpoint for region**
+
+  - AWS DevOps Agent is not available in the current region. Set `AWS_DEFAULT_REGION` to a supported region (e.g. `us-east-1`) or pass `--region` explicitly.
+
+**The AI never calls the tool despite `ENABLE_AWS_DEVOPS_AGENT_TOOL=true`**
+
+  - Confirm the env var value is exactly `"true"` (string, not boolean) and that the pod has been restarted.
+  - The tool has strict trigger conditions — it will not be called if `kubectl` or the `aws` tool can already answer the question. Try asking a question that requires cross-service AWS analysis after kubectl has returned inconclusive results.
