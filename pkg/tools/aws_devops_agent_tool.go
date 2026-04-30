@@ -16,6 +16,8 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"strings"
 
 	"github.com/KongZ/kubeai-chatbot/gollm"
@@ -70,8 +72,41 @@ func (t *AWSDevOpsAgent) Run(ctx context.Context, args map[string]any) (any, err
 	if !ok || strings.TrimSpace(message) == "" {
 		return &ExecResult{Command: "", Error: "message not provided or is empty"}, nil
 	}
-	cmdArgs := []string{"aws", "devops-agent", "create-chat", "--message", message}
-	return runCommand(ctx, cmdArgs, baseEnviron()), nil
+
+	agentSpaceID := os.Getenv("AWS_DEVOPS_AGENT_SPACE_ID")
+	if agentSpaceID == "" {
+		return &ExecResult{Command: "", Error: "AWS_DEVOPS_AGENT_SPACE_ID environment variable is not set"}, nil
+	}
+
+	// Step 1: create a chat session and obtain an executionId.
+	createResult := runCommand(ctx, []string{
+		"aws", "devops-agent", "create-chat",
+		"--agent-space-id", agentSpaceID,
+	}, baseEnviron())
+	if createResult.Error != "" {
+		return createResult, nil
+	}
+
+	// Parse the executionId from the create-chat JSON response.
+	var createResponse struct {
+		ExecutionID string `json:"executionId"`
+	}
+	if err := json.Unmarshal([]byte(createResult.Stdout), &createResponse); err != nil || createResponse.ExecutionID == "" {
+		return &ExecResult{
+			Command: createResult.Command,
+			Stdout:  createResult.Stdout,
+			Stderr:  createResult.Stderr,
+			Error:   "failed to parse executionId from create-chat response",
+		}, nil
+	}
+
+	// Step 2: send the message to the active chat session.
+	return runCommand(ctx, []string{
+		"aws", "devops-agent", "send-message",
+		"--agent-space-id", agentSpaceID,
+		"--execution-id", createResponse.ExecutionID,
+		"--content", message,
+	}, baseEnviron()), nil
 }
 
 func (t *AWSDevOpsAgent) WaitMessage() string {

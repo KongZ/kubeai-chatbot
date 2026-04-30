@@ -324,8 +324,13 @@ The AWS DevOps Agent tool is a second, separate tool that lets the AI consult [A
 
 ### What It Does
 
-- Executes `aws devops-agent create-chat --message <message>` internally
-- The AI composes the message; AWS DevOps Agent replies with analysis and recommendations
+Internally the tool runs two AWS CLI calls in sequence:
+
+1. `aws devops-agent create-chat --agent-space-id <space-id>` — opens a chat session, returns an `executionId`
+2. `aws devops-agent send-message --agent-space-id <space-id> --execution-id <id> --content <message>` — submits the question and returns AWS DevOps Agent's response
+
+The AI composes the message content; AWS DevOps Agent replies with analysis and recommendations.
+
 - **Read-only** — never modifies any resource
 - **Slow** — responses typically take 10–30 seconds; the bot automatically notifies the user to wait
 
@@ -346,12 +351,20 @@ The AI will **not** call it for:
 
 ### Enabling the Tool
 
-The tool is **disabled by default**. Set `ENABLE_AWS_DEVOPS_AGENT_TOOL=true` in the pod's environment:
+The tool requires two environment variables:
+
+| Variable | Required | Description |
+|---|---|---|
+| `ENABLE_AWS_DEVOPS_AGENT_TOOL` | Yes | Set to `"true"` to register the tool |
+| `AWS_DEVOPS_AGENT_SPACE_ID` | Yes | The Agent Space ID from the AWS DevOps Agent console |
+
+Find your Agent Space ID in the AWS console under **DevOps Agent → Agent Spaces**.
 
 ```yaml
 # values.yaml
 env:
   ENABLE_AWS_DEVOPS_AGENT_TOOL: "true"
+  AWS_DEVOPS_AGENT_SPACE_ID: "your-agent-space-id"
 ```
 
 Both tools can be enabled at the same time:
@@ -360,31 +373,43 @@ Both tools can be enabled at the same time:
 env:
   ENABLE_AWS_TOOL: "true"
   ENABLE_AWS_DEVOPS_AGENT_TOOL: "true"
+  AWS_DEVOPS_AGENT_SPACE_ID: "your-agent-space-id"
 ```
 
 ### IAM Permissions
 
-The IRSA role must include `devops-agent:CreateChat`. Add it to the same role used by the `aws` tool:
+The IAM service name for AWS DevOps Agent is `aidevops`. The resource ARN targets the agent space, not `*`.
 
-**Minimal policy for the DevOps Agent tool only:**
+**Option 1 — Attach the AWS managed policy (simplest):**
+
+```
+AIDevOpsAgentAccessPolicy
+```
+
+Attach this managed policy directly to the IRSA role. AWS keeps it up to date as the service evolves.
+
+**Option 2 — Inline policy (least-privilege):**
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AWSDevOpsAgentTool",
       "Effect": "Allow",
       "Action": [
-        "devops-agent:CreateChat"
+        "aidevops:CreateChat",
+        "aidevops:SendMessage",
+        "aidevops:ListChats"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:aidevops:<REGION>:<ACCOUNT_ID>:agentspace/*"
     }
   ]
 }
 ```
 
-**Combined policy for both tools (recommended when both are enabled):**
+Replace `<REGION>` and `<ACCOUNT_ID>` with your values.
+
+**Combined inline policy for both tools (recommended when both are enabled):**
 
 ```json
 {
@@ -416,12 +441,14 @@ The IRSA role must include `devops-agent:CreateChat`. Add it to the same role us
       "Resource": "*"
     },
     {
-      "Sid": "AWSDevOpsAgentTool",
+      "Sid": "AIDevOpsTool",
       "Effect": "Allow",
       "Action": [
-        "devops-agent:CreateChat"
+        "aidevops:CreateChat",
+        "aidevops:SendMessage",
+        "aidevops:ListChats"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:aidevops:<REGION>:<ACCOUNT_ID>:agentspace/*"
     }
   ]
 }
@@ -431,7 +458,7 @@ The IRSA role must include `devops-agent:CreateChat`. Add it to the same role us
 
 ### IRSA Setup
 
-No additional IRSA wiring is needed beyond adding the `devops-agent:CreateChat` action to the existing IRSA role. The service account annotation (`eks.amazonaws.com/role-arn`) and OIDC trust policy are identical to the `aws` tool setup — follow the steps in [IAM Permissions](#iam-permissions) and [Cross-Account AWS Access](#cross-account-aws-access) above if IRSA is not already configured.
+No additional IRSA wiring is needed beyond attaching the `AIDevOpsAgentAccessPolicy` managed policy (or the equivalent inline policy) to the existing IRSA role. The service account annotation (`eks.amazonaws.com/role-arn`) and OIDC trust policy are identical to the `aws` tool setup — follow the steps in [IAM Permissions](#iam-permissions) and [Cross-Account AWS Access](#cross-account-aws-access) above if IRSA is not already configured.
 
 ### Cost Considerations
 
@@ -441,15 +468,23 @@ No additional IRSA wiring is needed beyond adding the `devops-agent:CreateChat` 
 
 ### Verify the Setup
 
-Exec into the KubeAI pod and run a test call:
+Exec into the KubeAI pod and run the two-step sequence manually:
 
 ```bash
 kubectl exec -it deployment/kubeai-chatbot -n kubeai-chatbot -- /bin/bash
 
-aws devops-agent create-chat --message "hello"
+# Step 1: open a chat session
+aws devops-agent create-chat --agent-space-id "$AWS_DEVOPS_AGENT_SPACE_ID"
+# Expected: {"executionId": "abc123-...", "createdAt": 1714470000.0}
+
+# Step 2: send a message using the executionId from step 1
+aws devops-agent send-message \
+  --agent-space-id "$AWS_DEVOPS_AGENT_SPACE_ID" \
+  --execution-id "abc123-..." \
+  --content "hello"
 ```
 
-A successful response returns a JSON object with a `chatId` and response content. An `AccessDenied` error means `devops-agent:CreateChat` is missing from the IRSA role policy.
+A successful `send-message` response returns AWS DevOps Agent's reply. An `AccessDenied` on either call means the corresponding `aidevops` action is missing from the IRSA role — attach `AIDevOpsAgentAccessPolicy` or add the inline policy above.
 
 ### Troubleshooting
 
@@ -457,9 +492,13 @@ A successful response returns a JSON object with a `chatId` and response content
 
   - The `aws` CLI version does not support the `devops-agent` subcommand. Upgrade to the latest AWS CLI v2.
 
-**`AccessDenied` on `devops-agent:CreateChat`**
+**`AWS_DEVOPS_AGENT_SPACE_ID` is not set**
 
-  - The IRSA role policy does not include `devops-agent:CreateChat`. Add the action and wait for IAM propagation (up to 60 seconds).
+  - The tool returns an error immediately without calling AWS. Set the env var in `values.yaml` and restart the pod.
+
+**`AccessDenied` on `aidevops:CreateChat` or `aidevops:SendMessage`**
+
+  - The IRSA role is missing the `aidevops` permissions. Attach the `AIDevOpsAgentAccessPolicy` managed policy to the role, or add the inline policy from [IAM Permissions](#iam-permissions-1). Allow up to 60 seconds for IAM propagation.
 
 **`ServiceUnavailableException` or `ServiceNotActivatedException`**
 

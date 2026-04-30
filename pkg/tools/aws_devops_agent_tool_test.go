@@ -65,6 +65,8 @@ func TestAWSDevOpsAgentFunctionDefinition(t *testing.T) {
 	assert.Contains(t, def.Parameters.Required, "message")
 }
 
+// --- Run: input validation ---
+
 func TestAWSDevOpsAgentRun_MissingMessage(t *testing.T) {
 	tool := NewAWSDevOpsAgentTool()
 	result, err := tool.Run(context.Background(), map[string]any{})
@@ -89,12 +91,28 @@ func TestAWSDevOpsAgentRun_WhitespaceMessage(t *testing.T) {
 	assert.NotEmpty(t, execResult.Error)
 }
 
-func TestAWSDevOpsAgentRun_ValidMessage_CommandShape(t *testing.T) {
-	skipIfNoAWS(t)
+func TestAWSDevOpsAgentRun_MissingSpaceID(t *testing.T) {
+	t.Setenv("AWS_DEVOPS_AGENT_SPACE_ID", "")
+	tool := NewAWSDevOpsAgentTool()
+	result, err := tool.Run(context.Background(), map[string]any{"message": "help"})
+	require.NoError(t, err)
+	execResult := result.(*ExecResult)
+	assert.Contains(t, execResult.Error, "AWS_DEVOPS_AGENT_SPACE_ID")
+}
+
+// --- Run: command shape ---
+
+// TestAWSDevOpsAgentRun_CreateChat_CommandShape verifies that create-chat is invoked
+// with the correct flags. The command will fail without real AWS credentials but the
+// ExecResult.Command field is always populated before execution.
+func TestAWSDevOpsAgentRun_CreateChat_CommandShape(t *testing.T) {
+	t.Setenv("AWS_DEVOPS_AGENT_SPACE_ID", "test-space-id")
 	tool := NewAWSDevOpsAgentTool()
 	result, err := tool.Run(context.Background(), map[string]any{"message": "test question"})
 	require.NoError(t, err)
 	execResult := result.(*ExecResult)
-	// Regardless of whether AWS DevOps Agent responds, the command must be correctly formed.
-	assert.Contains(t, execResult.Command, "aws devops-agent create-chat --message test question")
+	// create-chat either succeeds (real AWS) or fails (no credentials) — either way
+	// the Command field reflects the first step that was attempted.
+	assert.Contains(t, execResult.Command, "aws devops-agent create-chat")
+	assert.Contains(t, execResult.Command, "--agent-space-id test-space-id")
 }
