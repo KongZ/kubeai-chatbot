@@ -458,7 +458,7 @@ Replace `<REGION>` and `<ACCOUNT_ID>` with your values.
 
 ### IRSA Setup
 
-No additional IRSA wiring is needed beyond attaching the `AIDevOpsAgentAccessPolicy` managed policy (or the equivalent inline policy) to the existing IRSA role. The service account annotation (`eks.amazonaws.com/role-arn`) and OIDC trust policy are identical to the `aws` tool setup — follow the steps in [IAM Permissions](#iam-permissions) and [Cross-Account AWS Access](#cross-account-aws-access) above if IRSA is not already configured.
+No additional IRSA wiring is needed beyond attaching the `AIDevOpsAgentAccessPolicy` managed policy (or the equivalent inline policy) to the existing IRSA role. The service account annotation (`eks.amazonaws.com/role-arn`) and OIDC trust policy are identical to the `aws` tool setup — follow the steps in [IAM Permissions](#iam-permissions) and  [Cross-Account AWS Access](#cross-account-aws-access) above if IRSA is not already configured.
 
 ### Cost Considerations
 
