@@ -374,6 +374,12 @@ The AI will:
 2. Use `kubectl --context <context-name>` or `kubectl --kubeconfig /home/kubeai/.kube/config --context <context-name>` for the specified cluster
 3. Default to the current context if no cluster is specified
 
+> [!NOTE]
+> If a single response would need commands against more than one cluster context (e.g. it starts
+> on `cluster-a` but then needs `cluster-b` to keep investigating), the bot stops and asks you to
+> confirm the switch instead of silently querying the second cluster. This is enforced in code, not
+> just prompted — ask again in the same conversation to let it proceed on the new context.
+
 ### Verify Configuration
 
 Test the setup by running:

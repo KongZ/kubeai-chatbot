@@ -21,6 +21,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -40,9 +41,10 @@ import (
 // SlackAPI defines the interface for Slack client methods used by SlackUI
 type SlackAPI interface {
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
-	UploadFileV2(params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
+	UploadFile(params slack.UploadFileParameters) (*slack.FileSummary, error)
 	AddReaction(name string, item slack.ItemRef) error
 	RemoveReaction(name string, item slack.ItemRef) error
+	AuthTestContext(ctx context.Context) (*slack.AuthTestResponse, error)
 }
 
 // AgentManager defines the interface for agent management methods used by SlackUI
@@ -66,11 +68,22 @@ type SlackUI struct {
 	apiClient       SlackAPI
 	authenticator   auth.Authenticator
 
+	// streamClient, agentEnabled, and teamID support rendering tool-call
+	// batches as a single streaming "Plan" card. See SLACK_AGENT_ENABLED.
+	streamClient SlackStreamAPI
+	agentEnabled bool
+	teamID       string
+
 	mu              sync.Mutex
 	processedEvents map[string]time.Time
 	activeTriggers  map[string]string // sessionID -> user message ts
 	stopCh          chan struct{}
 }
+
+// authTestTimeout bounds the startup auth.test check so an unreachable or
+// slow Slack API can't stall process startup (and its /healthz endpoint)
+// indefinitely when SLACK_AGENT_ENABLED is set.
+const authTestTimeout = 10 * time.Second
 
 var _ ui.UI = &SlackUI{}
 
@@ -82,6 +95,24 @@ func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, d
 	}
 
 	apiClient := slack.New(botToken)
+
+	agentEnabled := os.Getenv("SLACK_AGENT_ENABLED") == "true"
+	var streamClient SlackStreamAPI
+	var teamID string
+	if agentEnabled {
+		streamClient = newHTTPStreamClient(botToken)
+		// Bound this call: a hanging/unreachable Slack API must not stall
+		// process startup (and therefore the /healthz endpoint) indefinitely.
+		authCtx, cancelAuthCtx := context.WithTimeout(context.Background(), authTestTimeout)
+		authResp, err := apiClient.AuthTestContext(authCtx)
+		cancelAuthCtx()
+		if err != nil {
+			klog.Warningf("SLACK_AGENT_ENABLED enabled but auth.test failed (%v); falling back to classic tool-call rendering", err)
+			agentEnabled = false
+		} else {
+			teamID = authResp.TeamID
+		}
+	}
 
 	s := &SlackUI{
 		manager:         manager,
@@ -97,6 +128,9 @@ func NewSlackUI(manager AgentManager, sessionManager *sessions.SessionManager, d
 		activeTriggers:  make(map[string]string),
 		authenticator:   authenticator,
 		stopCh:          make(chan struct{}),
+		streamClient:    streamClient,
+		agentEnabled:    agentEnabled,
+		teamID:          teamID,
 	}
 
 	// Register callback to listen to new agents
@@ -284,6 +318,79 @@ func (s *SlackUI) handleSlackEvents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// dnsLookupTimeout bounds the DNS resolution validateRedirectURL performs
+// for non-literal hosts, so a broken/slow resolver can't hang an auth
+// request indefinitely.
+const dnsLookupTimeout = 3 * time.Second
+
+// blockedRedirectHostnames are cloud metadata services also reachable by
+// hostname (in addition to their well-known link-local IPs, which
+// validateRedirectURL's IP classification below already rejects).
+var blockedRedirectHostnames = map[string]bool{
+	"metadata.google.internal": true,
+	"metadata.internal":        true,
+	"metadata":                 true,
+}
+
+// validateRedirectURL rejects login URLs that would send a client to
+// internal infrastructure — localhost/loopback, link-local addresses
+// (which cover cloud metadata endpoints like 169.254.169.254), or other
+// private/internal network ranges — so a misconfigured RootURL/OIDC issuer,
+// or a bug in a future authenticator implementation, can't be used to
+// redirect users somewhere harmful when this runs on a cloud server.
+func validateRedirectURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parsing URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported scheme %q", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL has no host")
+	}
+
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") {
+		return fmt.Errorf("host %q is not allowed", host)
+	}
+	if blockedRedirectHostnames[lowerHost] {
+		return fmt.Errorf("host %q is not allowed", host)
+	}
+
+	ips, err := lookupHostIPs(host)
+	if err != nil {
+		return fmt.Errorf("resolving host %q: %w", host, err)
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() || ip.IsUnspecified() {
+			return fmt.Errorf("host %q resolves to a disallowed address %s", host, ip)
+		}
+	}
+	return nil
+}
+
+// lookupHostIPs resolves host to its IP addresses. An already-literal IP
+// (the common case for internal/metadata targets) is returned directly
+// without a network round trip.
+func lookupHostIPs(host string) ([]net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, len(addrs))
+	for i, addr := range addrs {
+		ips[i] = addr.IP
+	}
+	return ips, nil
+}
+
 func (s *SlackUI) handleAuthSuccess(w http.ResponseWriter, r *http.Request) {
 	if s.authenticator == nil {
 		http.Error(w, "Authentication not enabled", http.StatusForbidden)
@@ -310,7 +417,12 @@ func (s *SlackUI) handleAuthSuccess(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to generate login URL", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, loginURL, http.StatusFound)
+		if err := validateRedirectURL(loginURL); err != nil {
+			klog.Errorf("Refusing to redirect to unsafe login URL: %v", err)
+			http.Error(w, "Failed to generate login URL", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, loginURL, http.StatusFound) // #nosec G710 -- validated by validateRedirectURL above, which rejects loopback/link-local/private/metadata hosts.
 		return
 	}
 
@@ -399,6 +511,11 @@ func (s *SlackUI) processMessage(channel, threadTS, ts, text, userID string) {
 			s.postToSlack(channel, effectiveThreadTS, "Authentication required, but failed to generate login URL. Please contact your administrator.", false)
 			return
 		}
+		if err := validateRedirectURL(loginURL); err != nil {
+			klog.Errorf("Refusing to share unsafe login URL for session %s: %v", sessionID, err)
+			s.postToSlack(channel, effectiveThreadTS, "Authentication required, but failed to generate a valid login URL. Please contact your administrator.", false)
+			return
+		}
 		message := fmt.Sprintf("Please log in to continue: %s", loginURL)
 		s.postToSlack(channel, effectiveThreadTS, message, false)
 		return
@@ -435,6 +552,36 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 	// Start a single goroutine for this agent's lifetime
 	go func() {
 		indicatorRemoved := false
+
+		// openStream tracks an in-progress Slack "Plan" streaming message for
+		// the current batch of tool calls (SLACK_AGENT_ENABLED only); nil when
+		// no tool-call batch is currently open. streamDisabled is set once
+		// starting a brand new stream fails (e.g. the Agents feature isn't
+		// enabled on the Slack app), so we stop retrying and fall back to
+		// classic rendering for the rest of this session.
+		var openStream *toolCallStream
+		streamDisabled := false
+		// lastPlanTitle holds the most recent model "thinking"/plan text seen
+		// before a tool-call batch starts (never a final answer, see below),
+		// used to title the plan card so it reflects what the agent is
+		// actually about to do instead of a generic label.
+		var lastPlanTitle string
+		// fallbackToolCallIDs marks tool calls whose request never actually
+		// made it onto the plan card (a transient append failure on an
+		// otherwise-open stream) so their eventual response is also rendered
+		// classically instead of being misapplied to some other pending
+		// task. Only populated when the provider supplies a real tool-call
+		// ID; providers/paths that never do (Ollama, llama.cpp, the ReAct
+		// shim) fall back to FIFO correlation for both requests and
+		// responses, same as before this fallback tracking existed.
+		fallbackToolCallIDs := make(map[string]bool)
+
+		defer func() {
+			if openStream != nil {
+				s.closeToolCallStream(openStream)
+			}
+		}()
+
 		for msg := range a.Output {
 			apiMsg, ok := msg.(*api.Message)
 			if !ok {
@@ -462,35 +609,120 @@ func (s *SlackUI) ensureAgentListener(a *agent.Agent) {
 				indicatorRemoved = true
 			}
 
+			// A new user message means a new query is starting (this is what
+			// conversation.go posts right after receiving input, whether the
+			// previous query finished normally or was cut off by
+			// MaxIterations) — any earlier model reasoning no longer applies
+			// to whatever tasks come next, so don't let it leak forward.
+			// Slack already shows the user's own message, so there's nothing
+			// to render here.
+			if apiMsg.Source == api.MessageSourceUser {
+				lastPlanTitle = ""
+				continue
+			}
+
 			// Only post agent or model messages to Slack
-			if apiMsg.Source == api.MessageSourceAgent || apiMsg.Source == api.MessageSourceModel {
-				if text, ok := apiMsg.Payload.(string); ok && text != ">>>" {
-					if apiMsg.Type == api.MessageTypeToolCallRequest {
-						// Wrap tool calls in code blocks for better visibility
-						text = "```\n" + text + "\n```"
-					}
-					isFinal := false
-					if apiMsg.Metadata != nil && apiMsg.Metadata["is_final"] == "true" {
-						isFinal = true
-					}
-					s.postToSlack(channel, threadTS, text, isFinal)
-				} else if choiceReq, ok := apiMsg.Payload.(*api.UserChoiceRequest); ok {
-					prompt := choiceReq.Prompt
-					// Attempt to identify and format command
-					if strings.Contains(prompt, "kubectl") && !strings.Contains(prompt, "```") && !strings.Contains(prompt, "`") {
-						// This is a naive heuristic but might help.
-						// Better: let's try to split by "command:" or similar keywords if present.
-						parts := strings.SplitN(prompt, "command:", 2)
-						if len(parts) == 2 {
-							pre := strings.TrimSpace(parts[0])
-							cmd := strings.TrimSpace(parts[1])
-							prompt = fmt.Sprintf("%s command:\n```%s```", pre, cmd)
+			if apiMsg.Source != api.MessageSourceAgent && apiMsg.Source != api.MessageSourceModel {
+				continue
+			}
+
+			toolCallID := apiMsg.Metadata["tool_call_id"]
+			isFinal := apiMsg.Metadata != nil && apiMsg.Metadata["is_final"] == "true"
+
+			if apiMsg.Type == api.MessageTypeToolCallRequest {
+				if text, ok := apiMsg.Payload.(string); ok {
+					if s.agentEnabled && !streamDisabled {
+						wasClosed := openStream == nil
+						var appended bool
+						openStream, appended = s.appendToolCallRequest(openStream, channel, threadTS, a.Session.SlackUserID, lastPlanTitle, toolCallID, text)
+						if appended {
+							continue
+						}
+						if openStream == nil && wasClosed {
+							// Starting a brand new stream failed entirely
+							// (e.g. Slack's Agents feature isn't enabled) —
+							// stop retrying for this session.
+							streamDisabled = true
+						} else if openStream != nil && toolCallID != "" {
+							// The stream itself is fine, only this append
+							// failed transiently — keep it open for later
+							// tool calls, but make sure this call's response
+							// also falls back to classic rendering.
+							fallbackToolCallIDs[toolCallID] = true
 						}
 					}
-					s.postToSlack(channel, threadTS, prompt, true)
-				} else if errPayload, ok := apiMsg.Payload.(error); ok {
-					s.postToSlack(channel, threadTS, "Error: "+errPayload.Error(), true)
+					// Classic rendering fallback. Deliberately does not close
+					// any still-open stream — a single failed/disabled tool
+					// call shouldn't tear down the rest of an otherwise
+					// working batch.
+					s.postToSlack(channel, threadTS, "```\n"+text+"\n```", false)
 				}
+				continue
+			}
+
+			if apiMsg.Type == api.MessageTypeToolCallResponse {
+				useStream := s.agentEnabled && openStream != nil && !fallbackToolCallIDs[toolCallID]
+				if toolCallID != "" {
+					delete(fallbackToolCallIDs, toolCallID)
+				}
+				if useStream && s.appendToolCallResponse(openStream, channel, threadTS, toolCallID, apiMsg.Payload) {
+					continue
+				}
+				// Classic rendering fallback — covers SLACK_AGENT_ENABLED
+				// being off, a request that already fell back, or this
+				// specific append failing. summarizeToolStatus handles both
+				// the string (shim/error) and map[string]any (native
+				// tool-calling) payload shapes, so responses are never
+				// silently dropped — but it never shows the tool's actual
+				// output, only a short success/failure summary.
+				statusText, _ := summarizeToolStatus(apiMsg.Payload)
+				s.postToSlack(channel, threadTS, statusText, false)
+				continue
+			}
+
+			// Any other message type marks the end of the current tool-call batch.
+			if openStream != nil {
+				s.closeToolCallStream(openStream)
+				openStream = nil
+			}
+
+			if text, ok := apiMsg.Payload.(string); ok && text != ">>>" {
+				// Only the model's OWN text (its reasoning/answer) should ever
+				// become a task's title. Agent-sourced status text (e.g. "Maximum
+				// number of iterations reached", history-truncation notices) is
+				// MessageSourceAgent, not MessageSourceModel, and must never be
+				// captured here — otherwise a stale status message ends up
+				// mislabeling the next batch's tasks, even though it isn't the
+				// model's reasoning for that batch at all.
+				if apiMsg.Type == api.MessageTypeText && apiMsg.Source == api.MessageSourceModel {
+					if isFinal {
+						// A final answer closes out the turn — don't let it
+						// leak into the next batch's plan-card title.
+						lastPlanTitle = ""
+					} else {
+						// Remember the agent's most recent "thinking"/plan text
+						// so the next tool-call batch's plan card can be
+						// titled with it.
+						lastPlanTitle = text
+					}
+				}
+				s.postToSlack(channel, threadTS, text, isFinal)
+			} else if choiceReq, ok := apiMsg.Payload.(*api.UserChoiceRequest); ok {
+				prompt := choiceReq.Prompt
+				// Attempt to identify and format command
+				if strings.Contains(prompt, "kubectl") && !strings.Contains(prompt, "```") && !strings.Contains(prompt, "`") {
+					// This is a naive heuristic but might help.
+					// Better: let's try to split by "command:" or similar keywords if present.
+					parts := strings.SplitN(prompt, "command:", 2)
+					if len(parts) == 2 {
+						pre := strings.TrimSpace(parts[0])
+						cmd := strings.TrimSpace(parts[1])
+						prompt = fmt.Sprintf("%s command:\n```%s```", pre, cmd)
+					}
+				}
+				s.postToSlack(channel, threadTS, prompt, true)
+			} else if errPayload, ok := apiMsg.Payload.(error); ok {
+				s.postToSlack(channel, threadTS, "Error: "+errPayload.Error(), true)
 			}
 		}
 		klog.Infof("Slack listener for session %s terminated", sessionID)
@@ -1015,18 +1247,23 @@ func stripEmojis(text string) string {
 }
 
 func (s *SlackUI) uploadSnippet(channel, threadTS, text string) {
+	if text == "" {
+		klog.Warningf("uploadSnippet called with empty text for channel %s; skipping upload", channel)
+		return
+	}
 	klog.Infof("Response too long or complex, uploading as snippet to channel %s", channel)
 
-	params := slack.UploadFileV2Parameters{
+	params := slack.UploadFileParameters{
 		Channel:         channel,
 		ThreadTimestamp: threadTS,
 		Content:         text,
+		FileSize:        len(text), // required: slack-go's UploadFileContext rejects FileSize == 0, it never derives it from Content
 		Filename:        "response.md",
 		Title:           "Kubectl AI Response",
 		InitialComment:  "The result is too long, here is a snippet:",
 	}
 
-	_, err := s.apiClient.UploadFileV2(params)
+	_, err := s.apiClient.UploadFile(params)
 	if err != nil {
 		klog.Errorf("Failed to upload snippet to Slack: %v", err)
 		// Fallback to regular message if upload fails, but truncated
@@ -1070,4 +1307,3 @@ func formatForSlack(text string) string {
 
 	return text
 }
-

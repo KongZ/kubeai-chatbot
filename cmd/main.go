@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -89,6 +90,7 @@ func run(ctx context.Context) error {
 	sessionType := getEnv("SESSION_TYPE", "memory")
 	modifyResources := parseModifyResourcesMode(getEnv("MODIFY_RESOURCES", "none"))
 	enableAWSTool := getEnv("ENABLE_AWS_TOOL", "false") == "true"
+	maxIterations := parseMaxIterations(getEnv("MAX_ITERATIONS", "20"))
 
 	klog.Infof("Starting kubeai-chatbot (version: %s, commit: %s, date: %s)", version, commit, date)
 	klog.Infof("Configuration: provider=%s, model=%s, listen=%s", providerID, modelID, listenAddress)
@@ -155,7 +157,7 @@ func run(ctx context.Context) error {
 			Provider:        providerID,
 			Kubeconfig:      kubeconfig,
 			LLM:             client,
-			MaxIterations:   20,
+			MaxIterations:   maxIterations,
 			Tools:           agentTools,
 			Recorder:        recorder,
 			SessionBackend:  sessionType,
@@ -257,6 +259,23 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func parseMaxIterations(value string) int {
+	const (
+		defaultMaxIterations = 20
+		maxAllowedIterations = 200
+	)
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		klog.Warningf("Invalid MAX_ITERATIONS value %q, defaulting to %d", value, defaultMaxIterations)
+		return defaultMaxIterations
+	}
+	if n > maxAllowedIterations {
+		klog.Warningf("MAX_ITERATIONS value %d exceeds the allowed maximum of %d, capping it", n, maxAllowedIterations)
+		return maxAllowedIterations
+	}
+	return n
 }
 
 func parseModifyResourcesMode(value string) agent.ModifyResourcesMode {

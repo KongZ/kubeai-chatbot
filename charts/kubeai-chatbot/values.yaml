@@ -211,6 +211,18 @@ env:
   #
   MODIFY_RESOURCES: "none"
 
+  ## Maximum number of agentic loop iterations per query before the agent stops
+  ## and asks the user for guidance.
+  #
+  MAX_ITERATIONS: "20"
+
+  ## Render tool-call batches as a single Slack streaming "Plan" card instead of
+  ## a sequence of separate messages. Requires the Slack app to have the
+  ## "Agents & AI Apps" feature enabled at api.slack.com — verify this before
+  ## enabling, see docs/slack_agent_enabled.md.
+  #
+  SLACK_AGENT_ENABLED: "true"
+
   ## Context window management (Gemini / Vertex AI only)
   ## LLM_MAX_HISTORY_ITEMS controls how many conversation history entries are sent
   ## to the model per request. When a session grows long (many kubectl calls with

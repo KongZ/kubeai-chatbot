@@ -1,0 +1,31 @@
+# Accepted findings — see reasoning below. Re-evaluate if the underlying
+# code changes (e.g. the chart's securityContext defaults, or this becomes
+# a network-facing service).
+
+# Dockerfile: no HEALTHCHECK instruction.
+# This image runs a Slack bot worker process (long-lived outbound connection),
+# not a service with an HTTP endpoint to probe — a container-level HEALTHCHECK
+# doesn't apply the way it would to a web server.
+DS-0026
+
+# Helm chart (charts/kubeai-chatbot/templates/deployment.yaml):
+# runAsUser/runAsGroup > 10000 recommendation. The chart intentionally pins
+# UID/GID 1000 to match the Dockerfile's non-root `kubeai` user
+# (groupadd -g 1000 / useradd -u 1000), which owns the mounted volumes.
+KSV-0020
+KSV-0021
+
+# Non-default namespace recommendation. The chart doesn't hardcode a
+# namespace — it's supplied at install time (`helm install -n <namespace>`);
+# this only fires because Trivy renders the chart without a namespace override.
+KSV-0110
+
+# "Uses the default security context" — the chart already sets an explicit,
+# hardened securityContext via values.yaml (allowPrivilegeEscalation: false,
+# capabilities dropped, readOnlyRootFilesystem, runAsNonRoot, runAsUser).
+KSV-0118
+
+# Untrusted registry image. The image repository is configurable via
+# `values.yaml` (image.repository) per deployment, not a fixed third-party
+# registry baked into the chart.
+KSV-0125

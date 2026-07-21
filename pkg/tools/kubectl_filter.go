@@ -120,13 +120,10 @@ func kubectlModifiesResource(command string) string {
 	return "unknown"
 }
 
-func analyzeCall(call *syntax.CallExpr) string {
-	if call == nil || len(call.Args) == 0 {
-		klog.Warning("analyzeCall: call is nil or has no args")
-		return "unknown"
-	}
-
-	// Extract command and arguments
+// extractCallArgs extracts literal string arguments from a shell CallExpr,
+// falling back to the printer's rendering (with quotes trimmed) for args that
+// aren't plain literals (e.g. those containing expansions).
+func extractCallArgs(call *syntax.CallExpr) []string {
 	var args []string
 	for _, arg := range call.Args {
 		lit := arg.Lit()
@@ -139,6 +136,17 @@ func analyzeCall(call *syntax.CallExpr) string {
 			args = append(args, lit)
 		}
 	}
+	return args
+}
+
+func analyzeCall(call *syntax.CallExpr) string {
+	if call == nil || len(call.Args) == 0 {
+		klog.Warning("analyzeCall: call is nil or has no args")
+		return "unknown"
+	}
+
+	// Extract command and arguments
+	args := extractCallArgs(call)
 
 	if len(args) == 0 {
 		klog.Warning("analyzeCall: no arguments extracted from call")
@@ -195,6 +203,39 @@ func analyzeCall(call *syntax.CallExpr) string {
 
 	klog.V(1).Infof("analyzeCall: unknown op for verb=%q subVerb=%q", verb, subVerb)
 	return "unknown"
+}
+
+// extractKubectlContext scans a kubectl command for a --context flag, in
+// either --context=<name> or spaced --context <name> form, and returns its
+// value. Uses the same shell-aware tokenizer as kubectlModifiesResource so
+// quoting is handled consistently; returns ok=false if no --context flag is
+// present or the command doesn't parse.
+func extractKubectlContext(command string) (kubeContext string, ok bool) {
+	parser := syntax.NewParser()
+	file, err := parser.Parse(strings.NewReader(command), "")
+	if err != nil {
+		return "", false
+	}
+
+	syntax.Walk(file, func(node syntax.Node) bool {
+		call, isCall := node.(*syntax.CallExpr)
+		if !isCall {
+			return true
+		}
+		args := extractCallArgs(call)
+		for i, a := range args {
+			if val, hasPrefix := strings.CutPrefix(a, "--context="); hasPrefix {
+				kubeContext, ok = val, val != ""
+				return false
+			}
+			if a == "--context" && i+1 < len(args) {
+				kubeContext, ok = args[i+1], true
+				return false
+			}
+		}
+		return true
+	})
+	return kubeContext, ok
 }
 
 // parseKubectlArgs extracts verb, subverb, and dry-run flag from kubectl arguments

@@ -57,16 +57,18 @@ The easiest way to set up your Slack app is using the provided manifest:
 
 ### General Application Settings
 
-| Variable               | Description                                                                                                   | Default              |
-| :--------------------- | :------------------------------------------------------------------------------------------------------------ | :------------------- |
-| `SLACK_BOT_TOKEN`      | Slack Bot User OAuth Token                                                                                    | Required             |
-| `SLACK_SIGNING_SECRET` | Slack app Signing Secret                                                                                      | Required             |
-| `MODIFY_RESOURCES`     | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md)) | `none`               |
-| `KUBECONFIG`           | Path to your kubeconfig file                                                                                  | `$HOME/.kube/config` |
-| `LISTEN_ADDRESS`       | Address for the bot to listen on                                                                              | `0.0.0.0:8888`       |
-| `AUTH_METHOD`          | Auth method (`SAML`, `OIDC`, or `NONE`)                                                                       | `NONE`               |
-| `SESSION_TYPE`         | Session storage (`postgres`, `filesystem`, `memory`)                                                                | `memory`             |
-| `LOG_LEVEL`            | Verbosity of logs (e.g., `2` for info)                                                                        | `1`                  |
+| Variable               | Description                                                                                                       | Default              |
+| :--------------------- | :---------------------------------------------------------------------------------------------------------------- | :------------------- |
+| `SLACK_BOT_TOKEN`      | Slack Bot User OAuth Token                                                                                        | Required             |
+| `SLACK_SIGNING_SECRET` | Slack app Signing Secret                                                                                          | Required             |
+| `MODIFY_RESOURCES`     | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md))     | `none`               |
+| `KUBECONFIG`           | Path to your kubeconfig file                                                                                      | `$HOME/.kube/config` |
+| `LISTEN_ADDRESS`       | Address for the bot to listen on                                                                                  | `0.0.0.0:8888`       |
+| `AUTH_METHOD`          | Auth method (`SAML`, `OIDC`, or `NONE`)                                                                           | `NONE`               |
+| `SESSION_TYPE`         | Session storage (`postgres`, `filesystem`, `memory`)                                                              | `memory`             |
+| `LOG_LEVEL`            | Verbosity of logs (e.g., `2` for info)                                                                            | `1`                  |
+| `MAX_ITERATIONS`       | Max tool-call iterations the agent can take per turn before stopping and asking for more input                    | `20`                 |
+| `SLACK_AGENT_ENABLED`  | Render tool calls as a single live-updating Slack plan card (see [Slack Agent Mode](docs/slack_agent_enabled.md)) | `false`              |
 
 ### General LLM Settings
 
@@ -146,12 +148,15 @@ KubeAI Chatbot is built with safety as a priority:
 
   - **Immutable Secrets**: The bot is hardcoded to refuse any request involving `kubectl secrets`. This prevention happens at both the LLM prompt level and the tool execution validator.
   - **Modification Modes**: The `MODIFY_RESOURCES` env var controls write access with three levels: `none` (read-only — bot provides commands for you to run manually), `allow` (bot can execute writes only after you say yes), and `auto` (bot executes writes autonomously). Default is `none`. See [Modification Modes](docs/modification_modes.md) for details.
+  - **Single-Cluster Focus Per Response**: If a response would need commands against more than one cluster context, the bot stops and asks you to confirm before switching — it will never silently jump between clusters mid-investigation.
+  - **No Compound Commands**: Commands with pipes (`|`), `&&`, `||`, or `;` are rejected — the bot always runs a single, plain command so its actions stay easy to reason about and audit.
   - **Use Secret Manager**: Although KubeAI Chatbot is built with secret requests denied, it is strongly recommended to use a secret manager to store sensitive information such as API keys, tokens, and other credentials. [piggy](https://github.com/KongZ/piggy) supports AWS Secret Manager and provides highly secure encapsulation without leaving any trace of the secret in Kubernetes.
 
 ## 🏗️ Architecture
 
   - [System Architecture](docs/architecture.md)
   - [Modification Modes](docs/modification_modes.md)
+  - [Slack Agent Mode](docs/slack_agent_enabled.md)
   - [Context Management](docs/context_management.md)
   - [Session Storage Setup](docs/session_storage.md)
   - [SAML Authentication Setup](docs/auth_saml.md)

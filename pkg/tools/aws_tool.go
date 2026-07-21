@@ -74,7 +74,7 @@ func (t *AWS) IsInteractive(args map[string]any) (bool, error) {
 		return true, fmt.Errorf("interactive AWS commands are not supported")
 	}
 	if isCompoundCommand(command) {
-		return true, fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not allowed. Use a single standalone aws command instead")
+		return true, compoundCommandError("aws")
 	}
 	return false, nil
 }

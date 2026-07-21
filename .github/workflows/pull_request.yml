@@ -12,20 +12,31 @@ jobs:
       statuses: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Full git history is needed to get a proper list of changed files within `super-linter`
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Lint Code Base
-        uses: super-linter/super-linter@v7
+        uses: super-linter/super-linter@4ce20838b8ab83717e78138c5b3a1407148e0918 # v8
         env:
           VALIDATE_CHECKOV: false
           VALIDATE_KUBERNETES_KUBECONFORM: false
           VALIDATE_GO: false # disable the linting process of the individual Go files
+          # Temporarily disabled: super-linter passes the module root directory to
+          # golangci-lint without a `/...` suffix, which fails with "no go files to
+          # analyze" whenever (like here) all source lives under subdirectories
+          # (cmd/, pkg/, internal/) rather than the module root itself. This is a
+          # confirmed upstream bug, fixed but not yet released:
+          # https://github.com/super-linter/super-linter/pull/7884
+          # Re-enable once a super-linter release includes that fix. `go vet`
+          # (via go build/test) and `staticcheck` still run in code_build.yml.
+          VALIDATE_GO_MODULES: false
           VALIDATE_YAML: false
           VALIDATE_YAML_PRETTIER: false
           VALIDATE_MARKDOWN_PRETTIER: false
+          VALIDATE_JSON_PRETTIER: false # conflicts with VALIDATE_BIOME_FORMAT on the same JSON files
           VALIDATE_GO_RELEASER: false
           VALIDATE_EDITORCONFIG: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,3 +44,4 @@ jobs:
           FILTER_REGEX_EXCLUDE: ".*(demo|gollm)/.*|pkg/agent/.*"
           JSCPD_CONFIG_FILE: .jscpd.json
           SQLFLUFF_CONFIG_FILE: .sqlfluff
+          TRIVY_CONFIG_FILE: trivy.yaml

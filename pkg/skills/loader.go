@@ -74,7 +74,7 @@ func LoadFromDir(dir string) ([]Skill, error) {
 }
 
 func loadFile(path string) (Skill, error) {
-	content, err := os.ReadFile(path) //nolint:gosec // G304: path constructed from os.ReadDir result, not user input
+	content, err := os.ReadFile(path) // #nosec G304 -- path constructed from os.ReadDir result, not user input
 	if err != nil {
 		return Skill{}, err
 	}

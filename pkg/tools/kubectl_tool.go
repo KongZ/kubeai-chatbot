@@ -120,6 +120,15 @@ func (t *Kubectl) IsInteractive(args map[string]any) (bool, error) {
 	if !ok {
 		return false, nil
 	}
+	// Route compound/piped commands through the same pre-dispatch gate as
+	// genuinely interactive commands (matching AWS.IsInteractive) so they're
+	// rejected immediately with a clear, user-visible error — instead of
+	// being dispatched, failing at runCommand() time (no real shell to
+	// interpret the pipe), and only then surfacing the reason buried inside
+	// the tool result.
+	if isCompoundCommand(command) {
+		return true, compoundCommandError("kubectl")
+	}
 	return IsInteractiveCommand(command)
 }
 
@@ -130,6 +139,15 @@ func (t *Kubectl) CheckModifiesResource(args map[string]any) string {
 	}
 
 	return kubectlModifiesResource(command)
+}
+
+// ExtractKubeContext implements tools.KubeContextExtractor.
+func (t *Kubectl) ExtractKubeContext(args map[string]any) (string, bool) {
+	command, ok := commandStringFromArgs(args)
+	if !ok {
+		return "", false
+	}
+	return extractKubectlContext(command)
 }
 
 func validateKubectlCommand(command string) error {
@@ -144,9 +162,20 @@ func validateKubectlCommand(command string) error {
 		return fmt.Errorf("port-forwarding is not allowed, please try some other alternative")
 	}
 	if isCompoundCommand(command) {
-		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not allowed. Use a single standalone kubectl command instead")
+		return compoundCommandError("kubectl")
 	}
 	return nil
+}
+
+// compoundCommandError is the user/model-facing error for a rejected
+// compound/piped command. Phrased in the agent's own first-person voice
+// since it's shown directly in chat (see the interactive-command gate in
+// pkg/agent/conversation.go's Run()) as well as fed back to the model as an
+// observation to correct its next action.
+func compoundCommandError(binaryName string) error {
+	//lint:ignore ST1005 intentionally capitalized first-person chat text, not a typical wrapped Go error
+	//nolint:staticcheck // ST1005: intentionally capitalized first-person chat text, not a typical wrapped Go error
+	return fmt.Errorf("I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone %s command instead", binaryName)
 }
 
 // isCompoundCommand returns true if the shell-parsed command contains any pipe or
