@@ -46,6 +46,41 @@ If a server is unreachable at startup, KubeAI logs a warning and continues — M
 
 ---
 
+## Authenticating with a Remote MCP Server
+
+Sidecar servers on `localhost` typically don't need auth — the sidecar itself holds the credentials for whatever it talks to (see the Datadog example below). But if `MCP_SERVERS` points at a remote, hosted MCP endpoint (e.g. a vendor's managed MCP server reachable over HTTPS), that endpoint will usually require a credential on every request.
+
+Set `MCP_AUTH_<NAME>` (server name uppercased, non-alphanumeric characters replaced with `_`) to a comma-separated list of `Header=value` pairs. These headers are sent with every request to that server.
+
+```yaml
+env:
+  MCP_SERVERS: "datadog=https://<your-datadog-mcp-endpoint>"
+  MCP_AUTH_DATADOG: "DD_API_KEY=<key>,DD_APPLICATION_KEY=<key>"
+```
+
+A single bearer token works the same way:
+
+```yaml
+env:
+  MCP_SERVERS: "internal-tools=https://mcp.internal.example.com"
+  MCP_AUTH_INTERNAL_TOOLS: "Authorization=Bearer <token>"
+```
+
+Source these values from a Kubernetes Secret rather than inlining them in `values.yaml`:
+
+```yaml
+env:
+  - name: MCP_AUTH_DATADOG
+    valueFrom:
+      secretKeyRef:
+        name: datadog-mcp-credentials
+        key: auth-header
+```
+
+If `MCP_AUTH_<NAME>` is unset for a server, no auth headers are sent — matching today's sidecar behavior. This only supports static, long-lived credentials (API keys, service/personal access tokens); it does not implement the MCP OAuth 2.1 authorization flow, which is designed for interactive clients with a user present to complete a consent redirect.
+
+---
+
 ## Example: Datadog MCP Server
 
 The [Datadog MCP server](https://github.com/DataDog/datadog-mcp-server) exposes Datadog metrics, monitors, dashboards, and logs as MCP tools. Deploying it as a sidecar lets the agent answer questions like "show me CPU usage for the api-service pod over the last hour" by querying Datadog directly.
@@ -267,6 +302,12 @@ KubeAI connects to the URL specified in `MCP_SERVERS` and sends all JSON-RPC req
 
   - MCP failures are non-fatal. KubeAI continues without MCP tools and logs a warning.
   - Fix the sidecar and restart the pod to reconnect.
+
+  **Remote server returns HTTP 401/403 at startup:**
+
+  - Confirm `MCP_AUTH_<NAME>` is set and uses the header name(s) the server expects (check its docs — e.g. `Authorization`, or vendor-specific keys like `DD_API_KEY`).
+  - Confirm the env var name matches the server name in `MCP_SERVERS` (uppercased, non-alphanumeric characters replaced with `_`).
+  - Confirm the referenced Secret exists and the key is correct.
 
   **Tool calls failing:**
 

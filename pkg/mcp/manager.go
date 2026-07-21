@@ -17,6 +17,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
@@ -49,7 +50,13 @@ func NewManager(ctx context.Context, serversEnv string) (*Manager, error) {
 	m := &Manager{}
 
 	for _, cfg := range configs {
-		client := NewClient(cfg.name, cfg.url)
+		headers, err := loadAuthHeaders(cfg.name)
+		if err != nil {
+			klog.Warningf("MCP server %q: invalid auth headers: %v — skipping", cfg.name, err)
+			continue
+		}
+
+		client := NewClient(cfg.name, cfg.url, headers)
 
 		if err := client.Initialize(ctx); err != nil {
 			klog.Warningf("MCP server %q (%s) failed to initialize: %v — skipping", cfg.name, cfg.url, err)
@@ -141,4 +148,55 @@ func parseServersEnv(env string) ([]serverConfig, error) {
 	}
 
 	return configs, nil
+}
+
+// loadAuthHeaders reads the MCP_AUTH_<NAME> environment variable for the given
+// server name and parses it into a set of static HTTP headers to send with
+// every request to that server (e.g. "Authorization=Bearer <token>", or
+// "DD_API_KEY=<key>,DD_APPLICATION_KEY=<key>" for servers that need multiple
+// headers). If the variable is unset, no headers are added and the server is
+// contacted unauthenticated (e.g. a same-pod sidecar).
+func loadAuthHeaders(serverName string) (map[string]string, error) {
+	raw := os.Getenv(authEnvVarName(serverName))
+	if raw == "" {
+		return nil, nil
+	}
+	return parseHeaderList(raw)
+}
+
+// authEnvVarName maps an MCP server name to its auth env var, e.g.
+// "datadog" -> "MCP_AUTH_DATADOG", "my-server" -> "MCP_AUTH_MY_SERVER".
+func authEnvVarName(serverName string) string {
+	upper := strings.ToUpper(serverName)
+	sanitized := strings.Map(func(r rune) rune {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, upper)
+	return "MCP_AUTH_" + sanitized
+}
+
+// parseHeaderList parses "Header1=value1,Header2=value2" into a header map.
+// Values may themselves contain "=" (e.g. "Authorization=Bearer abc=="); only
+// the first "=" in each entry is treated as the separator.
+func parseHeaderList(raw string) (map[string]string, error) {
+	headers := make(map[string]string)
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		idx := strings.IndexByte(entry, '=')
+		if idx <= 0 {
+			return nil, fmt.Errorf("invalid header entry %q: expected Header=value format", entry)
+		}
+		key := strings.TrimSpace(entry[:idx])
+		value := strings.TrimSpace(entry[idx+1:])
+		if key == "" || value == "" {
+			return nil, fmt.Errorf("invalid header entry %q: header and value must not be empty", entry)
+		}
+		headers[key] = value
+	}
+	return headers, nil
 }

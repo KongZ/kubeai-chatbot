@@ -37,18 +37,22 @@ type ToolDef struct {
 
 // Client connects to a single MCP server over HTTP (Streamable HTTP transport).
 type Client struct {
-	name   string
-	url    string
-	http   *http.Client
-	nextID atomic.Int64
+	name    string
+	url     string
+	headers map[string]string
+	http    *http.Client
+	nextID  atomic.Int64
 }
 
-// NewClient creates a new MCP HTTP client for the given server.
-func NewClient(name, url string) *Client {
+// NewClient creates a new MCP HTTP client for the given server. headers are
+// static HTTP headers (e.g. "Authorization: Bearer ..." or an API key header)
+// sent with every request — used to authenticate with servers that require it.
+func NewClient(name, url string, headers map[string]string) *Client {
 	return &Client{
-		name: name,
-		url:  url,
-		http: &http.Client{Timeout: 30 * time.Second},
+		name:    name,
+		url:     url,
+		headers: headers,
+		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -97,6 +101,9 @@ func (c *Client) call(ctx context.Context, method string, params any) (json.RawM
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+	for k, v := range c.headers {
+		httpReq.Header.Set(k, v)
+	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
