@@ -102,12 +102,6 @@ type startStreamRequest struct {
 	Chunks          []any
 }
 
-// markdownTextChunk is a "markdown_text" stream chunk.
-type markdownTextChunk struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
 // planUpdateChunk is a "plan_update" stream chunk.
 type planUpdateChunk struct {
 	Type  string `json:"type"`

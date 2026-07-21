@@ -185,7 +185,7 @@ func TestKubectlIsInteractive_CompoundCommand(t *testing.T) {
 	if !interactive {
 		t.Error("expected a compound/piped command to be reported as interactive (blocked pre-dispatch)")
 	}
-	wantMsg := "I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone kubectl command instead."
+	wantMsg := "I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone kubectl command instead"
 	if err == nil || err.Error() != wantMsg {
 		t.Errorf("error = %v, want %q", err, wantMsg)
 	}

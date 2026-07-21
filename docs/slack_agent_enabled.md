@@ -18,11 +18,11 @@ partway through, it's easy to miss.
 
 With Agent Mode on, the same investigation shows up as one card with a checklist of steps:
 
-- **Less noise** — one message updates in place instead of a scrolling wall of separate posts.
-- **Easier to follow along** — anyone in the channel, technical or not, can glance at the card and
-  see what the bot is doing and how far it's gotten, like a task list.
-- **Failures are visible, not silent** — a step that fails is marked with a short reason (e.g. `pod
-  "x" not found`) instead of disappearing into a wall of text.
+  - **Less noise** — one message updates in place instead of a scrolling wall of separate posts.
+  - **Easier to follow along** — anyone in the channel, technical or not, can glance at the card and
+    see what the bot is doing and how far it's gotten, like a task list.
+  - **Failures are visible, not silent** — a step that fails is marked with a short reason (e.g.
+    `pod "x" not found`) instead of disappearing into a wall of text.
 
 This only changes how tool calls are *displayed*. It doesn't change what the agent does, how it
 decides to run commands, or any of the write-confirmation behavior described in
@@ -78,20 +78,20 @@ it never fails to answer just because this feature can't start.
 
 ## What it looks like
 
-- Each task's title is drawn from the model's own explanation for that step (e.g. "I'll check the
-  pod status and recent events") rather than the bare command, so the card reads like a plan, not a
-  command log. If the model didn't explain that particular step, the title falls back to a short
-  label like "kubectl logs image-reflector-controller-...". The title stays visible for the whole
-  life of the task, including after it completes.
-- A task's output is a short status line, never the raw command output — `✅ Success (1.15s)` on
-  success, or `❌ Failed (1.15s): <reason>` on failure. The reason is the most actionable detail
-  available (e.g. `Error from server (NotFound): pods "x" not found`), never the full command
-  output. This applies whether Agent Mode is on or off.
-- The command itself is shown once, in the task's details, and truncated if it's very long — it's
-  never repeated or posted anywhere outside its own card.
-- Every task always reaches a finished state. If something interrupts the bot mid-batch (e.g. the
-  session is torn down), any still-running task is marked as failed with an "interrupted" note
-  rather than being left stuck showing "in progress" forever.
+  - Each task's title is drawn from the model's own explanation for that step (e.g. "I'll check the
+    pod status and recent events") rather than the bare command, so the card reads like a plan, not
+    a command log. If the model didn't explain that particular step, the title falls back to a
+    short label like "kubectl logs image-reflector-controller-...". The title stays visible for the
+    whole life of the task, including after it completes.
+  - A task's output is a short status line, never the raw command output — `✅ Success (1.15s)` on
+    success, or `❌ Failed (1.15s): <reason>` on failure. The reason is the most actionable detail
+    available (e.g. `Error from server (NotFound): pods "x" not found`), never the full command
+    output. This applies whether Agent Mode is on or off.
+  - The command itself is shown once, in the task's details, and truncated if it's very long — it's
+    never repeated or posted anywhere outside its own card.
+  - Every task always reaches a finished state. If something interrupts the bot mid-batch (e.g. the
+    session is torn down), any still-running task is marked as failed with an "interrupted" note
+    rather than being left stuck showing "in progress" forever.
 
 ## Verifying it's working
 
@@ -109,9 +109,9 @@ Since there's no advance API check, the practical way to confirm everything is w
 
 ## Limitations
 
-- If Slack does reject the streaming call for your workspace, there's no way for the bot to work
-  around that on your behalf — see the troubleshooting steps under
-  [Prerequisites](#prerequisites).
-- Calls Slack's Web API directly via `net/http` rather than through `slack-go/slack`, since that
-  library doesn't yet have bindings for the streaming methods — if Slack changes this API, this
-  integration may need updating ahead of a library upgrade.
+  - If Slack does reject the streaming call for your workspace, there's no way for the bot to work
+    around that on your behalf — see the troubleshooting steps under
+    [Prerequisites](#prerequisites).
+  - Calls Slack's Web API directly via `net/http` rather than through `slack-go/slack`, since that
+    library doesn't yet have bindings for the streaming methods — if Slack changes this API, this
+    integration may need updating ahead of a library upgrade.

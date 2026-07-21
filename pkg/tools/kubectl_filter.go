@@ -120,13 +120,10 @@ func kubectlModifiesResource(command string) string {
 	return "unknown"
 }
 
-func analyzeCall(call *syntax.CallExpr) string {
-	if call == nil || len(call.Args) == 0 {
-		klog.Warning("analyzeCall: call is nil or has no args")
-		return "unknown"
-	}
-
-	// Extract command and arguments
+// extractCallArgs extracts literal string arguments from a shell CallExpr,
+// falling back to the printer's rendering (with quotes trimmed) for args that
+// aren't plain literals (e.g. those containing expansions).
+func extractCallArgs(call *syntax.CallExpr) []string {
 	var args []string
 	for _, arg := range call.Args {
 		lit := arg.Lit()
@@ -139,6 +136,17 @@ func analyzeCall(call *syntax.CallExpr) string {
 			args = append(args, lit)
 		}
 	}
+	return args
+}
+
+func analyzeCall(call *syntax.CallExpr) string {
+	if call == nil || len(call.Args) == 0 {
+		klog.Warning("analyzeCall: call is nil or has no args")
+		return "unknown"
+	}
+
+	// Extract command and arguments
+	args := extractCallArgs(call)
 
 	if len(args) == 0 {
 		klog.Warning("analyzeCall: no arguments extracted from call")
@@ -214,18 +222,7 @@ func extractKubectlContext(command string) (kubeContext string, ok bool) {
 		if !isCall {
 			return true
 		}
-		var args []string
-		for _, arg := range call.Args {
-			lit := arg.Lit()
-			if lit == "" {
-				var sb strings.Builder
-				_ = syntax.NewPrinter().Print(&sb, arg)
-				lit = strings.Trim(sb.String(), "'\"")
-			}
-			if lit != "" {
-				args = append(args, lit)
-			}
-		}
+		args := extractCallArgs(call)
 		for i, a := range args {
 			if val, hasPrefix := strings.CutPrefix(a, "--context="); hasPrefix {
 				kubeContext, ok = val, val != ""

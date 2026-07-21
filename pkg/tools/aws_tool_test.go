@@ -152,7 +152,7 @@ func TestAWSIsInteractive_CompoundCommand(t *testing.T) {
 	interactive, err := tool.IsInteractive(map[string]any{"command": "aws ec2 describe-instances && echo done"})
 	assert.True(t, interactive)
 	require.Error(t, err)
-	assert.Equal(t, "I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone aws command instead.", err.Error())
+	assert.Equal(t, "I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone aws command instead", err.Error())
 }
 
 func TestAWSIsInteractive_NormalCommand(t *testing.T) {
