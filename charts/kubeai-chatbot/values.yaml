@@ -235,10 +235,20 @@ env:
   # LLM_MAX_HISTORY_ITEMS: "50"
 
   ## MCP Server Configuration
-  ## Comma-separated list of name=url pairs for MCP servers running as sidecars.
-  ## Example: MCP_SERVERS: "fetcher=http://localhost:8090,slack=http://localhost:8091"
+  ## Comma-separated list of name=url pairs for MCP servers running as sidecars,
+  ## or remote HTTPS endpoints that require authentication.
+  ## Example: MCP_SERVERS: "fetcher=http://localhost:8090,datadog=https://mcp.datadoghq.com"
   #
   # MCP_SERVERS: ""
+
+  ## MCP Server Authentication (optional)
+  ## For each server name in MCP_SERVERS, set MCP_AUTH_<NAME> (uppercased,
+  ## non-alphanumeric characters replaced with "_") to a comma-separated list
+  ## of Header=value pairs sent with every request to that server. Omit for
+  ## same-pod sidecars that don't need auth. Source the value from a Secret.
+  ## Example: MCP_AUTH_DATADOG: "DD_API_KEY=<key>,DD_APPLICATION_KEY=<key>"
+  #
+  # MCP_AUTH_DATADOG: ""
 
   ## Skills Configuration
   ## Path to the skills directory. Skills are loaded from .md files in this directory
