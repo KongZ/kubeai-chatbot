@@ -48,7 +48,7 @@ func TestParseHeaderList(t *testing.T) {
 		},
 		{
 			name: "multiple headers",
-			raw:  "DD_API_KEY=key1,DD_APPLICATION_KEY=key2",
+			raw:  "DD_API_KEY=key1,DD_APPLICATION_KEY=key2", // gitleaks:allow
 			want: map[string]string{"DD_API_KEY": "key1", "DD_APPLICATION_KEY": "key2"},
 		},
 		{
@@ -114,7 +114,7 @@ func TestLoadAuthHeaders(t *testing.T) {
 	})
 
 	t.Run("set env var is parsed", func(t *testing.T) {
-		t.Setenv("MCP_AUTH_DATADOG", "DD_API_KEY=key1,DD_APPLICATION_KEY=key2")
+		t.Setenv("MCP_AUTH_DATADOG", "DD_API_KEY=key1,DD_APPLICATION_KEY=key2") // gitleaks:allow
 		headers, err := loadAuthHeaders("datadog")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
