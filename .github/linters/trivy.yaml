@@ -1,0 +1,5 @@
+# Explicit pointer to the repo-root .trivyignore, so suppressions apply the
+# same way whether Trivy is run directly (trivy fs .) or wrapped by
+# super-linter (which passes --config .github/linters/trivy.yaml but scans
+# from the repo root).
+ignorefile: .trivyignore
