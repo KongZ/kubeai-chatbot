@@ -1,8 +1,6 @@
 module github.com/KongZ/kubeai-chatbot/gollm
 
-go 1.26.0
-
-toolchain go1.26.5
+go 1.25.0
 
 replace github.com/KongZ/kubeai-chatbot => ../
 
