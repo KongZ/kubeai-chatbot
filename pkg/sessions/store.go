@@ -42,6 +42,15 @@ type Metadata struct {
 
 var defaultMemoryStore Store = newMemoryStore()
 
+// validateChatMessage validates a chat message record, wrapping any error
+// with context so callers across chat store backends report it consistently.
+func validateChatMessage(record *api.Message) error {
+	if err := record.Validate(); err != nil {
+		return fmt.Errorf("invalid chat message: %w", err)
+	}
+	return nil
+}
+
 type Store interface {
 	GetSession(id string) (*api.Session, error)
 	CreateSession(session *api.Session) error

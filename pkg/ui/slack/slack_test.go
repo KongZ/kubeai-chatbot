@@ -1201,7 +1201,7 @@ func TestPostToSlack(t *testing.T) {
 			text: func() string {
 				var b strings.Builder
 				for i := 0; i < 51; i++ {
-					b.WriteString(fmt.Sprintf("## Section %d\nContent for section %d\n\n", i, i))
+					fmt.Fprintf(&b, "## Section %d\nContent for section %d\n\n", i, i)
 				}
 				return b.String()
 			}(),

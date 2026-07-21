@@ -174,8 +174,8 @@ func (s *FileChatMessageStore) HistoryPath() string {
 
 // AddChatMessage appends a message to the existing history on disk.
 func (s *FileChatMessageStore) AddChatMessage(record *api.Message) error {
-	if err := record.Validate(); err != nil {
-		return fmt.Errorf("invalid chat message: %w", err)
+	if err := validateChatMessage(record); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
