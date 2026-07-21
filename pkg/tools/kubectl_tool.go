@@ -174,6 +174,7 @@ func validateKubectlCommand(command string) error {
 // observation to correct its next action.
 func compoundCommandError(binaryName string) error {
 	//lint:ignore ST1005 intentionally capitalized first-person chat text, not a typical wrapped Go error
+	//nolint:staticcheck // ST1005: intentionally capitalized first-person chat text, not a typical wrapped Go error
 	return fmt.Errorf("I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone %s command instead", binaryName)
 }
 

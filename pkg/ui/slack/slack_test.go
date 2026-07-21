@@ -39,7 +39,7 @@ import (
 // mockSlackAPI is a mock implementation of SlackAPI
 type mockSlackAPI struct {
 	PostMessageFunc    func(channelID string, options ...slack.MsgOption) (string, string, error)
-	UploadFileV2Func   func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
+	UploadFileFunc   func(params slack.UploadFileParameters) (*slack.FileSummary, error)
 	AddReactionFunc    func(name string, item slack.ItemRef) error
 	RemoveReactionFunc func(name string, item slack.ItemRef) error
 	AuthTestFunc       func(ctx context.Context) (*slack.AuthTestResponse, error)
@@ -52,9 +52,9 @@ func (m *mockSlackAPI) PostMessage(channelID string, options ...slack.MsgOption)
 	return "", "", nil
 }
 
-func (m *mockSlackAPI) UploadFileV2(params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
-	if m.UploadFileV2Func != nil {
-		return m.UploadFileV2Func(params)
+func (m *mockSlackAPI) UploadFile(params slack.UploadFileParameters) (*slack.FileSummary, error) {
+	if m.UploadFileFunc != nil {
+		return m.UploadFileFunc(params)
 	}
 	return nil, nil
 }
@@ -1049,7 +1049,7 @@ func TestUploadSnippet(t *testing.T) {
 			var gotFileSize int
 
 			mockAPI := &mockSlackAPI{
-				UploadFileV2Func: func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
+				UploadFileFunc: func(params slack.UploadFileParameters) (*slack.FileSummary, error) {
 					uploadCalled = true
 					gotFileSize = params.FileSize
 					return nil, tt.uploadError
@@ -1064,9 +1064,9 @@ func TestUploadSnippet(t *testing.T) {
 			ui.uploadSnippet("C123", "123.456", content)
 
 			if !uploadCalled {
-				t.Error("expected UploadFileV2 to be called")
+				t.Error("expected UploadFile to be called")
 			}
-			// slack-go's UploadFileV2Context rejects FileSize == 0 outright
+			// slack-go's UploadFileContext rejects FileSize == 0 outright
 			// (files.go:628-630, v0.17.3) regardless of Content's actual
 			// length, so this must always be set to the real byte length.
 			if gotFileSize != len(content) {
@@ -1088,7 +1088,7 @@ func TestUploadSnippet(t *testing.T) {
 func TestUploadSnippetEmptyTextSkipsUpload(t *testing.T) {
 	uploadCalled := false
 	mockAPI := &mockSlackAPI{
-		UploadFileV2Func: func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
+		UploadFileFunc: func(params slack.UploadFileParameters) (*slack.FileSummary, error) {
 			uploadCalled = true
 			return nil, nil
 		},
@@ -1097,7 +1097,7 @@ func TestUploadSnippetEmptyTextSkipsUpload(t *testing.T) {
 	ui.uploadSnippet("C123", "123.456", "")
 
 	if uploadCalled {
-		t.Error("expected UploadFileV2 not to be called for empty text")
+		t.Error("expected UploadFile not to be called for empty text")
 	}
 }
 
@@ -1227,7 +1227,7 @@ func TestPostToSlack(t *testing.T) {
 					postMsgCalled = true
 					return "", "", tt.postError
 				},
-				UploadFileV2Func: func(params slack.UploadFileV2Parameters) (*slack.FileSummary, error) {
+				UploadFileFunc: func(params slack.UploadFileParameters) (*slack.FileSummary, error) {
 					uploadCalled = true
 					return nil, nil
 				},

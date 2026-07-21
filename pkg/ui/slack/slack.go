@@ -41,7 +41,7 @@ import (
 // SlackAPI defines the interface for Slack client methods used by SlackUI
 type SlackAPI interface {
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
-	UploadFileV2(params slack.UploadFileV2Parameters) (*slack.FileSummary, error)
+	UploadFile(params slack.UploadFileParameters) (*slack.FileSummary, error)
 	AddReaction(name string, item slack.ItemRef) error
 	RemoveReaction(name string, item slack.ItemRef) error
 	AuthTestContext(ctx context.Context) (*slack.AuthTestResponse, error)
@@ -1253,17 +1253,17 @@ func (s *SlackUI) uploadSnippet(channel, threadTS, text string) {
 	}
 	klog.Infof("Response too long or complex, uploading as snippet to channel %s", channel)
 
-	params := slack.UploadFileV2Parameters{
+	params := slack.UploadFileParameters{
 		Channel:         channel,
 		ThreadTimestamp: threadTS,
 		Content:         text,
-		FileSize:        len(text), // required: slack-go's UploadFileV2Context rejects FileSize == 0, it never derives it from Content
+		FileSize:        len(text), // required: slack-go's UploadFileContext rejects FileSize == 0, it never derives it from Content
 		Filename:        "response.md",
 		Title:           "Kubectl AI Response",
 		InitialComment:  "The result is too long, here is a snippet:",
 	}
 
-	_, err := s.apiClient.UploadFileV2(params)
+	_, err := s.apiClient.UploadFile(params)
 	if err != nil {
 		klog.Errorf("Failed to upload snippet to Slack: %v", err)
 		// Fallback to regular message if upload fails, but truncated
