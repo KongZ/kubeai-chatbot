@@ -197,6 +197,50 @@ func analyzeCall(call *syntax.CallExpr) string {
 	return "unknown"
 }
 
+// extractKubectlContext scans a kubectl command for a --context flag, in
+// either --context=<name> or spaced --context <name> form, and returns its
+// value. Uses the same shell-aware tokenizer as kubectlModifiesResource so
+// quoting is handled consistently; returns ok=false if no --context flag is
+// present or the command doesn't parse.
+func extractKubectlContext(command string) (kubeContext string, ok bool) {
+	parser := syntax.NewParser()
+	file, err := parser.Parse(strings.NewReader(command), "")
+	if err != nil {
+		return "", false
+	}
+
+	syntax.Walk(file, func(node syntax.Node) bool {
+		call, isCall := node.(*syntax.CallExpr)
+		if !isCall {
+			return true
+		}
+		var args []string
+		for _, arg := range call.Args {
+			lit := arg.Lit()
+			if lit == "" {
+				var sb strings.Builder
+				_ = syntax.NewPrinter().Print(&sb, arg)
+				lit = strings.Trim(sb.String(), "'\"")
+			}
+			if lit != "" {
+				args = append(args, lit)
+			}
+		}
+		for i, a := range args {
+			if val, hasPrefix := strings.CutPrefix(a, "--context="); hasPrefix {
+				kubeContext, ok = val, val != ""
+				return false
+			}
+			if a == "--context" && i+1 < len(args) {
+				kubeContext, ok = args[i+1], true
+				return false
+			}
+		}
+		return true
+	})
+	return kubeContext, ok
+}
+
 // parseKubectlArgs extracts verb, subverb, and dry-run flag from kubectl arguments
 func parseKubectlArgs(args []string) (verb, subVerb string, hasDryRun bool) {
 	for _, arg := range args {

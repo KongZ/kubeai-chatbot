@@ -47,3 +47,14 @@ type Tool interface {
 	// Returns "yes", "no", or "unknown"
 	CheckModifiesResource(args map[string]any) string
 }
+
+// KubeContextExtractor is an optional capability a Tool may implement when
+// its commands target a specific Kubernetes context (e.g. kubectl's
+// --context flag). The agent loop uses this to detect a mid-query cluster
+// switch and block it before execution, rather than relying solely on the
+// system prompt's "one cluster per response" instruction being followed.
+// Tools with no notion of a cluster context (or that couldn't parse one out
+// of this particular call) return ok=false.
+type KubeContextExtractor interface {
+	ExtractKubeContext(args map[string]any) (kubeContext string, ok bool)
+}

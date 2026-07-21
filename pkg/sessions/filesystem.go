@@ -258,7 +258,7 @@ func (s *FileChatMessageStore) ClearChatMessages() error {
 
 func (s *FileChatMessageStore) readMessages() ([]*api.Message, error) {
 	path := s.HistoryPath()
-	f, err := os.Open(path) //nolint:gosec // G304: path derived from validated session ID and fixed filename
+	f, err := os.Open(path) // #nosec G304 -- path derived from validated session ID and fixed filename
 	if errors.Is(err, os.ErrNotExist) {
 		return []*api.Message{}, nil
 	}
@@ -326,7 +326,7 @@ func (s *FileChatMessageStore) writeMessages(messages []*api.Message) error {
 		return err
 	}
 
-	f, err := os.OpenFile(s.HistoryPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // G304: path derived from validated session ID and fixed filename
+	f, err := os.OpenFile(s.HistoryPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) // #nosec G304 -- path derived from validated session ID and fixed filename
 	if err != nil {
 		return err
 	}

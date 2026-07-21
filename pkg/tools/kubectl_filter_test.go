@@ -607,3 +607,76 @@ func TestValidateKubectlCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractKubectlContext(t *testing.T) {
+	tests := []struct {
+		name        string
+		command     string
+		wantContext string
+		wantOK      bool
+	}{
+		{
+			name:        "spaced flag at end",
+			command:     "kubectl get pods -A -l app.kubernetes.io/name=datadog-agent --context k8s.staging.core",
+			wantContext: "k8s.staging.core",
+			wantOK:      true,
+		},
+		{
+			name:        "equals form",
+			command:     "kubectl get pods -n datadog --context=k8s.staging.tokyo",
+			wantContext: "k8s.staging.tokyo",
+			wantOK:      true,
+		},
+		{
+			name:        "no context flag",
+			command:     "kubectl get pods -A",
+			wantContext: "",
+			wantOK:      false,
+		},
+		{
+			name:        "context flag with no value",
+			command:     "kubectl get pods --context",
+			wantContext: "",
+			wantOK:      false,
+		},
+		{
+			name:        "not a kubectl command",
+			command:     "echo hello",
+			wantContext: "",
+			wantOK:      false,
+		},
+		{
+			name:        "context in the middle of the command",
+			command:     "kubectl logs datadog-zmhk9 -n datadog --context k8s.staging.core --previous",
+			wantContext: "k8s.staging.core",
+			wantOK:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotContext, gotOK := extractKubectlContext(tt.command)
+			if gotContext != tt.wantContext || gotOK != tt.wantOK {
+				t.Errorf("extractKubectlContext(%q) = (%q, %v), want (%q, %v)", tt.command, gotContext, gotOK, tt.wantContext, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestKubectlExtractKubeContext(t *testing.T) {
+	k := &Kubectl{}
+	ctx, ok := k.ExtractKubeContext(map[string]any{"command": "kubectl get pods --context k8s.staging.core"})
+	if !ok || ctx != "k8s.staging.core" {
+		t.Errorf("ExtractKubeContext() = (%q, %v), want (\"k8s.staging.core\", true)", ctx, ok)
+	}
+
+	ctx, ok = k.ExtractKubeContext(map[string]any{"command": "kubectl get pods"})
+	if ok || ctx != "" {
+		t.Errorf("ExtractKubeContext() with no --context flag = (%q, %v), want (\"\", false)", ctx, ok)
+	}
+
+	ctx, ok = k.ExtractKubeContext(map[string]any{"other": "not a command"})
+	if ok || ctx != "" {
+		t.Errorf("ExtractKubeContext() with no command arg = (%q, %v), want (\"\", false)", ctx, ok)
+	}
+}

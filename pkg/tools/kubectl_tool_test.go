@@ -173,3 +173,28 @@ func TestKubectlRun_InjectionPrevention(t *testing.T) {
 	// it won't be interpreted as a shell command separator.
 	assert.Contains(t, execResult.Command, "--as=admin; rm -rf /")
 }
+
+// TestKubectlIsInteractive_CompoundCommand verifies compound/piped kubectl
+// commands are rejected via IsInteractive — the same pre-dispatch gate
+// AWS.IsInteractive already uses for this — rather than being dispatched and
+// only failing (with the reason buried in the tool result) at Run() time.
+func TestKubectlIsInteractive_CompoundCommand(t *testing.T) {
+	tool := NewKubectlTool()
+
+	interactive, err := tool.IsInteractive(map[string]any{"command": "kubectl get pods -A | grep datadog"})
+	if !interactive {
+		t.Error("expected a compound/piped command to be reported as interactive (blocked pre-dispatch)")
+	}
+	wantMsg := "I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone kubectl command instead."
+	if err == nil || err.Error() != wantMsg {
+		t.Errorf("error = %v, want %q", err, wantMsg)
+	}
+
+	interactive, err = tool.IsInteractive(map[string]any{"command": "kubectl get pods -A --context k8s.staging.core"})
+	if interactive {
+		t.Errorf("expected a normal single command to not be flagged as interactive, got err=%v", err)
+	}
+	if err != nil {
+		t.Errorf("expected no error for a normal single command, got %v", err)
+	}
+}

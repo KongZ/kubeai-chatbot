@@ -50,7 +50,7 @@ func validateAWSCommand(command string) error {
 		}
 	}
 	if isCompoundCommand(command) {
-		return fmt.Errorf("compound commands with pipes (|), &&, ||, or ; are not allowed. Use a single standalone aws command instead")
+		return compoundCommandError("aws")
 	}
 	return nil
 }

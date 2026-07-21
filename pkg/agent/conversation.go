@@ -83,6 +83,15 @@ type Agent struct {
 	// currIteration tracks the current iteration of the agentic loop.
 	currIteration int
 
+	// activeKubeContext is the Kubernetes cluster context (e.g. kubectl's
+	// --context flag) established by the first tool call of the current
+	// query. Subsequent tool calls in the same query that target a
+	// different context are blocked (see the cluster-context gate in Run())
+	// rather than silently executed, since the system prompt's "one cluster
+	// per response" rule has no other enforcement. Reset alongside
+	// currIteration whenever a new query starts.
+	activeKubeContext string
+
 	LLM gollm.Client
 
 	// PromptTemplateFile allows specifying a custom template file
@@ -177,6 +186,16 @@ func (s *Agent) GetSession() *api.Session {
 
 // addMessage creates a new message, adds it to the session, and sends it to the output channel
 func (c *Agent) addMessage(source api.MessageSource, messageType api.MessageType, payload any) *api.Message {
+	return c.addMessageWithMetadata(source, messageType, payload, nil)
+}
+
+// addMessageWithMetadata behaves like addMessage but attaches metadata before
+// the message is stored and sent on c.Output. Setting metadata via
+// Message.SetMetadata *after* addMessage returns races with any consumer
+// goroutine reading Metadata as soon as the message arrives on the channel;
+// callers that need metadata present from the start (e.g. a correlation ID)
+// should use this instead.
+func (c *Agent) addMessageWithMetadata(source api.MessageSource, messageType api.MessageType, payload any, metadata map[string]string) *api.Message {
 	c.sessionMu.Lock()
 	defer c.sessionMu.Unlock()
 	message := &api.Message{
@@ -185,6 +204,7 @@ func (c *Agent) addMessage(source api.MessageSource, messageType api.MessageType
 		Type:      messageType,
 		Payload:   payload,
 		Timestamp: time.Now(),
+		Metadata:  metadata,
 	}
 
 	// session should always have a ChatMessageStore at this point
@@ -226,6 +246,7 @@ func (s *Agent) Init(ctx context.Context) error {
 	s.Input = make(chan any, 10)
 	s.Output = make(chan any, 10)
 	s.currIteration = 0
+	s.activeKubeContext = ""
 	// when we support session, we will need to initialize this with the
 	// current history of the conversation.
 	s.currChatContent = []any{}
@@ -396,6 +417,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 				// Start the agentic loop with the initial query
 				c.setAgentState(api.AgentStateRunning)
 				c.currIteration = 0
+				c.activeKubeContext = ""
 				c.currChatContent = []any{c.buildQueryWithSkills(initialQuery)}
 				c.pendingFunctionCalls = []ToolCallAnalysis{}
 			}
@@ -461,6 +483,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 
 					c.setAgentState(api.AgentStateRunning)
 					c.currIteration = 0
+					c.activeKubeContext = ""
 					c.currChatContent = []any{c.buildQueryWithSkills(query.Query)}
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
 					log.Info("Set agent state to running, will process agentic loop", "currIteration", c.currIteration, "currChatContent", len(c.currChatContent))
@@ -638,6 +661,7 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 					c.setAgentState(api.AgentStateDone)
 					c.currChatContent = []any{}
 					c.currIteration = 0
+					c.activeKubeContext = ""
 					c.pendingFunctionCalls = []ToolCallAnalysis{}
 					log.V(2).Info("Agent task completed, transitioning to done state")
 					if streamedText == "" {
@@ -675,6 +699,67 @@ func (c *Agent) Run(ctx context.Context, initialQuery string) error {
 						interactiveToolCallIndex = i
 					}
 				}
+
+				// Detect a Kubernetes cluster context switch mid-query: the
+				// model may target a different --context than the one
+				// already established for this query, silently violating the
+				// system prompt's "one cluster per response" rule. Block the
+				// whole batch atomically (same treatment as the
+				// modifies-resource gate below) rather than executing
+				// anything against the wrong cluster; this check applies
+				// regardless of ModifyResources/SkipPermissions, since it's
+				// a correctness concern, not a write-safety one. Only commit
+				// activeKubeContext once the whole batch is verified
+				// internally consistent, so a blocked batch never partially
+				// updates it.
+				batchKubeContext := c.activeKubeContext
+				var mismatchedKubeContext string
+				for _, result := range toolCallAnalysisResults {
+					if result.KubeContext == "" {
+						continue
+					}
+					if batchKubeContext == "" {
+						batchKubeContext = result.KubeContext
+						continue
+					}
+					if result.KubeContext != batchKubeContext {
+						mismatchedKubeContext = result.KubeContext
+						break
+					}
+				}
+
+				if mismatchedKubeContext != "" {
+					var commandDescriptions []string
+					for _, call := range c.pendingFunctionCalls {
+						commandDescriptions = append(commandDescriptions, call.ParsedToolCall.Description())
+					}
+
+					errorMessage := fmt.Sprintf(
+						"Cluster context switch blocked: this response already used context %q, but the following command(s) target a different context %q:\n* %s\nYou must not run commands against more than one cluster in the same response. Ask the user to confirm before investigating %q, then wait for their reply.",
+						c.activeKubeContext, mismatchedKubeContext, strings.Join(commandDescriptions, "\n* "), mismatchedKubeContext,
+					)
+
+					log.Error(nil, "Tool call blocked: cluster context switch", "activeContext", c.activeKubeContext, "attemptedContext", mismatchedKubeContext, "commands", commandDescriptions)
+
+					if c.EnableToolUseShim {
+						c.currChatContent = append(c.currChatContent, "Error: "+errorMessage)
+					} else {
+						for _, call := range c.pendingFunctionCalls {
+							c.currChatContent = append(c.currChatContent, gollm.FunctionCallResult{
+								ID:     call.FunctionCall.ID,
+								Name:   call.FunctionCall.Name,
+								Result: map[string]any{"error": errorMessage},
+							})
+						}
+					}
+
+					c.setAgentState(api.AgentStateRunning)
+					c.addMessage(api.MessageSourceAgent, api.MessageTypeError, errorMessage)
+					c.pendingFunctionCalls = []ToolCallAnalysis{}
+					c.currIteration = c.currIteration + 1
+					continue
+				}
+				c.activeKubeContext = batchKubeContext
 
 				if interactiveToolCallIndex >= 0 {
 					// Show error block for both shim enabled and disabled modes
@@ -1054,7 +1139,11 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 		// Only show "Running" message and proceed with execution for non-interactive commands
 		toolDescription := call.ParsedToolCall.Description()
 
-		c.addMessage(api.MessageSourceModel, api.MessageTypeToolCallRequest, toolDescription)
+		// toolCallMetadata carries the LLM's own tool-call ID so consumers
+		// (e.g. the Slack UI) can correlate a request with its matching
+		// response explicitly, instead of relying on message arrival order.
+		toolCallMetadata := map[string]string{"tool_call_id": call.FunctionCall.ID}
+		c.addMessageWithMetadata(api.MessageSourceModel, api.MessageTypeToolCallRequest, toolDescription, toolCallMetadata)
 
 		output, err := call.ParsedToolCall.InvokeTool(ctx, tools.InvokeToolOptions{
 			Kubeconfig: c.Kubeconfig,
@@ -1065,7 +1154,7 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 
 		if err != nil {
 			log.Error(err, "error executing action", "output", output)
-			c.addMessage(api.MessageSourceAgent, api.MessageTypeToolCallResponse, err.Error())
+			c.addMessageWithMetadata(api.MessageSourceAgent, api.MessageTypeToolCallResponse, err.Error(), toolCallMetadata)
 			return err
 		}
 
@@ -1096,7 +1185,7 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 				Result: result,
 			})
 		}
-		c.addMessage(api.MessageSourceAgent, api.MessageTypeToolCallResponse, payload)
+		c.addMessageWithMetadata(api.MessageSourceAgent, api.MessageTypeToolCallResponse, payload, toolCallMetadata)
 	}
 	return nil
 }
@@ -1113,6 +1202,10 @@ type ToolCallAnalysis struct {
 	IsInteractive       bool
 	IsInteractiveError  error
 	ModifiesResourceStr string
+	// KubeContext is the Kubernetes context this call targets (e.g. kubectl's
+	// --context flag), when the tool implements tools.KubeContextExtractor
+	// and one could be parsed out. Empty if not applicable/not found.
+	KubeContext string
 }
 
 func (c *Agent) analyzeToolCalls(ctx context.Context, toolCalls []gollm.FunctionCall) ([]ToolCallAnalysis, error) {
@@ -1128,6 +1221,11 @@ func (c *Agent) analyzeToolCalls(ctx context.Context, toolCalls []gollm.Function
 			toolCallAnalysis[i].IsInteractiveError = err
 		}
 		toolCallAnalysis[i].ModifiesResourceStr = toolCall.GetTool().CheckModifiesResource(call.Arguments)
+		if extractor, ok := toolCall.GetTool().(tools.KubeContextExtractor); ok {
+			if kubeContext, found := extractor.ExtractKubeContext(call.Arguments); found {
+				toolCallAnalysis[i].KubeContext = kubeContext
+			}
+		}
 		toolCallAnalysis[i].ParsedToolCall = toolCall
 	}
 	return toolCallAnalysis, nil
@@ -1217,7 +1315,7 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 	httpClient := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // reachability probe only
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- reachability probe only, no data exchanged over this connection
 		},
 	}
 

@@ -148,12 +148,12 @@ func TestAgentEndToEndToolExecution(t *testing.T) {
 	toolset.RegisterTool(tool)
 
 	a := &Agent{
-		ChatMessageStore:         store,
-		LLM:                      client,
-		Model:                    "test-model",
-		Tools:                    toolset,
-		MaxIterations:   4,
-		ModifyResources: ModifyResourcesModeAuto,
+		ChatMessageStore: store,
+		LLM:              client,
+		Model:            "test-model",
+		Tools:            toolset,
+		MaxIterations:    4,
+		ModifyResources:  ModifyResourcesModeAuto,
 		Session: &api.Session{
 			ID:               "test-session",
 			Name:             "Test Session",
@@ -358,12 +358,12 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 	toolset.RegisterTool(tool)
 
 	a := &Agent{
-		ChatMessageStore:         store,
-		LLM:                      client,
-		Model:                    "test-model",
-		Tools:                    toolset,
-		MaxIterations:   4,
-		ModifyResources: ModifyResourcesModeNone, // EXPLICITLY DISABLED
+		ChatMessageStore: store,
+		LLM:              client,
+		Model:            "test-model",
+		Tools:            toolset,
+		MaxIterations:    4,
+		ModifyResources:  ModifyResourcesModeNone, // EXPLICITLY DISABLED
 		Session: &api.Session{
 			ID:               "test-session",
 			Name:             "Test Session",
@@ -410,5 +410,122 @@ func TestAgentEndToEndAutomaticModifyDisabled(t *testing.T) {
 	}
 	if !strings.Contains(finalMsg.Payload.(string), "kubectl create ns") {
 		t.Fatalf("model did not provide the manual command: %v", finalMsg.Payload)
+	}
+}
+
+// contextAwareTool is a hand-rolled tools.Tool (rather than a gomock mock)
+// that also implements tools.KubeContextExtractor, used to exercise the
+// cluster-context-switch enforcement gate in Run() end-to-end.
+type contextAwareTool struct {
+	runCount int
+}
+
+func (t *contextAwareTool) Name() string        { return "kubectl_like" }
+func (t *contextAwareTool) Description() string { return "test tool with a kube context" }
+func (t *contextAwareTool) FunctionDefinition() *gollm.FunctionDefinition {
+	return &gollm.FunctionDefinition{Name: "kubectl_like"}
+}
+func (t *contextAwareTool) Run(ctx context.Context, args map[string]any) (any, error) {
+	t.runCount++
+	return map[string]any{"result": "ok"}, nil
+}
+func (t *contextAwareTool) IsInteractive(args map[string]any) (bool, error)  { return false, nil }
+func (t *contextAwareTool) CheckModifiesResource(args map[string]any) string { return "no" }
+func (t *contextAwareTool) ExtractKubeContext(args map[string]any) (string, bool) {
+	c, ok := args["context"].(string)
+	return c, ok && c != ""
+}
+
+// TestAgentEndToEndClusterContextSwitchBlocked reproduces the real-world
+// incident where the agent silently switched from one Kubernetes cluster
+// context to another mid-query: the first tool call establishes the
+// context for this query, the second call targets a different context and
+// must be blocked (never executed) with an explanatory error fed back to
+// the model, instead of silently running against the wrong cluster.
+func TestAgentEndToEndClusterContextSwitchBlocked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := sessions.NewInMemoryChatStore()
+	client := mocks.NewMockClient(ctrl)
+	chat := mocks.NewMockChat(ctrl)
+
+	client.EXPECT().StartChat(gomock.Any(), "test-model").Return(chat)
+	chat.EXPECT().Initialize(gomock.Any()).Return(nil)
+	chat.EXPECT().SetFunctionDefinitions(gomock.Any()).Return(nil)
+
+	firstResp := chatWith(fakePart{calls: []gollm.FunctionCall{{ID: "1", Name: "kubectl_like", Arguments: map[string]any{"context": "cluster-a"}}}})
+	secondResp := chatWith(fakePart{calls: []gollm.FunctionCall{{ID: "2", Name: "kubectl_like", Arguments: map[string]any{"context": "cluster-b"}}}})
+	thirdResp := chatWith(fText("done"))
+
+	firstIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) { yield(firstResp, nil) })
+	secondIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) { yield(secondResp, nil) })
+	thirdIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) { yield(thirdResp, nil) })
+
+	gomock.InOrder(
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(firstIter, nil),
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(secondIter, nil),
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(thirdIter, nil),
+	)
+	chat.EXPECT().WasTruncated().Return(false).AnyTimes()
+
+	tool := &contextAwareTool{}
+	var toolset tools.Tools
+	toolset.Init()
+	toolset.RegisterTool(tool)
+
+	a := &Agent{
+		ChatMessageStore: store,
+		LLM:              client,
+		Model:            "test-model",
+		Tools:            toolset,
+		MaxIterations:    5,
+		ModifyResources:  ModifyResourcesModeAuto,
+		Session: &api.Session{
+			ID:               "test-session",
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
+			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
+		},
+	}
+
+	if err := a.Init(ctx); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := a.Run(ctx, ""); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	recvMsg(t, ctx, a.Output) // initial user-input-request prompt
+	a.Input <- &api.UserInputResponse{Query: "check datadog"}
+
+	blockedMsg := recvUntil(t, ctx, a.Output, func(m *api.Message) bool {
+		return m.Type == api.MessageTypeError
+	})
+	if blockedMsg == nil {
+		t.Fatalf("did not receive error message for the cluster context switch")
+	}
+	if !strings.Contains(blockedMsg.Payload.(string), "Cluster context switch blocked") {
+		t.Fatalf("unexpected error message: %v", blockedMsg.Payload)
+	}
+
+	finalMsg := recvUntil(t, ctx, a.Output, func(m *api.Message) bool {
+		return m.Type == api.MessageTypeText && m.Source == api.MessageSourceModel
+	})
+	if finalMsg == nil {
+		t.Fatalf("did not receive final model response")
+	}
+
+	// Only the first (cluster-a) call should have actually run.
+	if tool.runCount != 1 {
+		t.Errorf("expected exactly 1 tool run (the mismatched cluster-b call must be blocked), got %d", tool.runCount)
 	}
 }

@@ -87,11 +87,11 @@ func parseCommandArgs(command string) ([]string, *ExecResult) {
 
 // runCommand executes cmdArgs directly (no shell), captures stdout/stderr, and
 // returns an ExecResult. The caller is responsible for building the environment.
-func runCommand(ctx context.Context, cmdArgs []string, env []string) *ExecResult { //nolint:gosec // G204: callers pass a validated, whitelist-checked binary as cmdArgs[0]
+func runCommand(ctx context.Context, cmdArgs []string, env []string) *ExecResult {
 	fullCommand := strings.Join(cmdArgs, " ")
 
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...) // #nosec G204 -- callers pass a validated, whitelist-checked binary as cmdArgs[0]
 	cmd.Env = env
 
 	stdout, err := cmd.Output()

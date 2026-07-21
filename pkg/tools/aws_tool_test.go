@@ -81,7 +81,7 @@ func TestAWSRun_BlocksCompoundCommand(t *testing.T) {
 	require.NoError(t, err)
 	execResult := result.(*ExecResult)
 	assert.NotEmpty(t, execResult.Error)
-	assert.Contains(t, execResult.Error, "not allowed")
+	assert.Contains(t, execResult.Error, "compound commands")
 }
 
 func TestAWSRun_MissingCommand(t *testing.T) {
@@ -151,7 +151,8 @@ func TestAWSIsInteractive_CompoundCommand(t *testing.T) {
 	tool := NewAWSTool()
 	interactive, err := tool.IsInteractive(map[string]any{"command": "aws ec2 describe-instances && echo done"})
 	assert.True(t, interactive)
-	assert.Error(t, err)
+	require.Error(t, err)
+	assert.Equal(t, "I cannot use compound commands with pipes (|), &&, ||, or ;. I will use a single standalone aws command instead.", err.Error())
 }
 
 func TestAWSIsInteractive_NormalCommand(t *testing.T) {
