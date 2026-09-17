@@ -54,7 +54,7 @@ RUN apt-get update && \
     echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        google-cloud-cli=${GCLOUD_CLI_VERSION}-0 \
+        google-cloud-cli \
         google-cloud-cli-gke-gcloud-auth-plugin && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
