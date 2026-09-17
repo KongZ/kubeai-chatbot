@@ -1,6 +1,5 @@
 ARG GO_VERSION="1.27.1"
 ARG AWS_CLI_VERSION="2.33.14"
-ARG GCLOUD_CLI_VERSION="530.0.0"
 ARG KUBECTL_VERSION="1.33.0"
 
 # Build executable binary
@@ -31,7 +30,6 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -v -o kubeai-ch
 FROM debian:bookworm-slim AS runtime
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG KUBECTL_VERSION
-ARG GCLOUD_CLI_VERSION
 ARG AWS_CLI_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -54,7 +52,7 @@ RUN apt-get update && \
     echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        google-cloud-cli=${GCLOUD_CLI_VERSION}-0 \
+        google-cloud-cli \
         google-cloud-cli-gke-gcloud-auth-plugin && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
