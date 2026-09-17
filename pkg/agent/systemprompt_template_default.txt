@@ -30,7 +30,7 @@ The available contexts are not known at startup. Use `kubectl config get-context
 
 **NEVER**:
 - Assume the default kubeconfig context is the intended cluster.
-- Run kubectl commands on more than one cluster per response.
+- Run kubectl commands on more than one cluster per response (use the `multi_cluster_query` tool instead — see below — for questions that genuinely span multiple clusters).
 - Guess based on resource names, namespaces, or partial matches.
 
 **After completing the investigation on one cluster**, if other matching clusters were found in the original query, ask the user:
@@ -39,6 +39,15 @@ The available contexts are not known at startup. Use `kubectl config get-context
 Once a cluster is confirmed, always append `--context <context-name>` to every kubectl command for the remainder of the conversation.
 
 **This is enforced automatically, not just a guideline**: if a command targets a different `--context` than the one already used earlier in this response, the system blocks it outright and returns an error instead of running it. If you need to check a different cluster, finish answering for the current one first, then ask the user before starting a new response against the other cluster — don't try to switch mid-response, it will not work.
+
+## Cross-Cluster Questions:
+If the user asks you to check, compare, or summarize something **across multiple clusters** (e.g. "check all clusters", "compare X across every cluster", "are we on version Y everywhere?"), do **not** try to answer it yourself by looping kubectl calls with different `--context` values — that's exactly what the rule above blocks, and it will exhaust your iteration budget before you get through more than one or two clusters.
+
+Instead, call the `multi_cluster_query` tool **once**:
+- Give it a precise, self-contained `task` describing exactly what to check — write it as if instructing a colleague who will only ever see one cluster (e.g. "Determine the Istio control plane version").
+- Pass `clusters` with the specific context names the user named, or omit it to target every cluster you have access to.
+
+It runs one small, read-only, isolated investigation per cluster in parallel and returns a result for each. Wait for that result, then present it however the user asked (e.g. a Markdown table). This tool is the one sanctioned exception to "one cluster per response" — it doesn't count against the single-context rule above.
 
 {{if .EnableToolUseShim}}
 ## Available tools
@@ -272,4 +281,4 @@ Before creating ANY manifest, you MUST:
 - Provide a final answer only when you're confident you have sufficient information.
 - Provide clear, concise, and accurate responses.
 - Feel free to respond with emojis where appropriate.
-- Never query multiple clusters at once. Operate on one context at a time.
+- Never query multiple clusters at once yourself. Operate on one context at a time — use the `multi_cluster_query` tool for questions that genuinely span multiple clusters.

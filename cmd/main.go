@@ -91,6 +91,9 @@ func run(ctx context.Context) error {
 	modifyResources := parseModifyResourcesMode(getEnv("MODIFY_RESOURCES", "none"))
 	enableAWSTool := getEnv("ENABLE_AWS_TOOL", "false") == "true"
 	maxIterations := parseMaxIterations(getEnv("MAX_ITERATIONS", "20"))
+	enableClusterFanout := getEnv("ENABLE_CLUSTER_FANOUT", "true") == "true"
+	fanoutMaxIterations := parseFanoutMaxIterations(getEnv("FANOUT_MAX_ITERATIONS", "5"))
+	fanoutMaxConcurrency := parseFanoutMaxConcurrency(getEnv("FANOUT_MAX_CONCURRENCY", "4"))
 
 	klog.Infof("Starting kubeai-chatbot (version: %s, commit: %s, date: %s)", version, commit, date)
 	klog.Infof("Configuration: provider=%s, model=%s, listen=%s", providerID, modelID, listenAddress)
@@ -153,18 +156,21 @@ func run(ctx context.Context) error {
 		}
 
 		return &agent.Agent{
-			Model:           modelID,
-			Provider:        providerID,
-			Kubeconfig:      kubeconfig,
-			LLM:             client,
-			MaxIterations:   maxIterations,
-			Tools:           agentTools,
-			Recorder:        recorder,
-			SessionBackend:  sessionType,
-			AgentName:       agentName,
-			ModifyResources: modifyResources,
-			EnableAWSTool:   enableAWSTool,
-			SkillsRegistry:  skillsRegistry,
+			Model:                modelID,
+			Provider:             providerID,
+			Kubeconfig:           kubeconfig,
+			LLM:                  client,
+			MaxIterations:        maxIterations,
+			Tools:                agentTools,
+			Recorder:             recorder,
+			SessionBackend:       sessionType,
+			AgentName:            agentName,
+			ModifyResources:      modifyResources,
+			EnableAWSTool:        enableAWSTool,
+			SkillsRegistry:       skillsRegistry,
+			EnableClusterFanout:  enableClusterFanout,
+			FanoutMaxIterations:  fanoutMaxIterations,
+			FanoutMaxConcurrency: fanoutMaxConcurrency,
 		}, nil
 	}
 
@@ -274,6 +280,40 @@ func parseMaxIterations(value string) int {
 	if n > maxAllowedIterations {
 		klog.Warningf("MAX_ITERATIONS value %d exceeds the allowed maximum of %d, capping it", n, maxAllowedIterations)
 		return maxAllowedIterations
+	}
+	return n
+}
+
+func parseFanoutMaxIterations(value string) int {
+	const (
+		defaultFanoutMaxIterations = 5
+		maxAllowedFanoutIterations = 20
+	)
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		klog.Warningf("Invalid FANOUT_MAX_ITERATIONS value %q, defaulting to %d", value, defaultFanoutMaxIterations)
+		return defaultFanoutMaxIterations
+	}
+	if n > maxAllowedFanoutIterations {
+		klog.Warningf("FANOUT_MAX_ITERATIONS value %d exceeds the allowed maximum of %d, capping it", n, maxAllowedFanoutIterations)
+		return maxAllowedFanoutIterations
+	}
+	return n
+}
+
+func parseFanoutMaxConcurrency(value string) int {
+	const (
+		defaultFanoutMaxConcurrency = 4
+		maxAllowedFanoutConcurrency = 10
+	)
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		klog.Warningf("Invalid FANOUT_MAX_CONCURRENCY value %q, defaulting to %d", value, defaultFanoutMaxConcurrency)
+		return defaultFanoutMaxConcurrency
+	}
+	if n > maxAllowedFanoutConcurrency {
+		klog.Warningf("FANOUT_MAX_CONCURRENCY value %d exceeds the allowed maximum of %d, capping it", n, maxAllowedFanoutConcurrency)
+		return maxAllowedFanoutConcurrency
 	}
 	return n
 }

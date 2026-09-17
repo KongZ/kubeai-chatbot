@@ -68,6 +68,9 @@ The easiest way to set up your Slack app is using the provided manifest:
 | `SESSION_TYPE`         | Session storage (`postgres`, `filesystem`, `memory`)                                                              | `memory`             |
 | `LOG_LEVEL`            | Verbosity of logs (e.g., `2` for info)                                                                            | `1`                  |
 | `MAX_ITERATIONS`       | Max tool-call iterations the agent can take per turn before stopping and asking for more input                    | `20`                 |
+| `ENABLE_CLUSTER_FANOUT` | Answer cross-cluster questions ("check all clusters") via a bounded, parallel, read-only fan-out tool instead of looping single-cluster turns (see [Cross-Cluster Access, Step 8](docs/cross_cluster_access.md)) | `true`               |
+| `FANOUT_MAX_ITERATIONS` | Model round-trips allowed per cluster inside a fan-out (independent of, and much smaller than, `MAX_ITERATIONS`)  | `5`                   |
+| `FANOUT_MAX_CONCURRENCY` | How many clusters a fan-out investigates in parallel                                                            | `4`                   |
 | `SLACK_AGENT_ENABLED`  | Render tool calls as a single live-updating Slack plan card (see [Slack Agent Mode](docs/slack_agent_enabled.md)) | `false`              |
 
 ### General LLM Settings

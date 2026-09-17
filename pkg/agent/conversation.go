@@ -106,6 +106,17 @@ type Agent struct {
 
 	MaxIterations int
 
+	// FanoutMaxIterations caps model round-trips per cluster inside a
+	// multi_cluster_query fan-out (independent of MaxIterations, which only
+	// governs the top-level conversation). Defaults applied by the tool
+	// itself if left zero.
+	FanoutMaxIterations int
+
+	// FanoutMaxConcurrency caps how many clusters a multi_cluster_query call
+	// investigates in parallel. Defaults applied by the tool itself if left
+	// zero.
+	FanoutMaxConcurrency int
+
 	// Kubeconfig is the path to the kubeconfig file.
 	Kubeconfig string
 
@@ -113,6 +124,12 @@ type Agent struct {
 
 	// EnableAWSTool controls whether the AWS CLI tool is registered.
 	EnableAWSTool bool
+
+	// EnableClusterFanout controls whether the multi_cluster_query tool is
+	// registered, letting the agent answer cross-cluster questions
+	// ("check all clusters and summarize") in a single, bounded, read-only
+	// fan-out instead of looping single-cluster turns with the user.
+	EnableClusterFanout bool
 
 	Tools tools.Tools
 
@@ -152,6 +169,12 @@ type Agent struct {
 
 	// SkillsRegistry holds the loaded skills for keyword matching and system prompt listing.
 	SkillsRegistry *skills.Registry
+
+	// kubeContexts is the list of reachable kubeconfig context names,
+	// computed once in Init via loadKubeContextNames. Besides being listed
+	// in the system prompt, it's the default target list for a
+	// multi_cluster_query call that doesn't name specific clusters.
+	kubeContexts []string
 
 	// cancel is the function to cancel the agent's context
 	cancel context.CancelFunc
@@ -299,12 +322,16 @@ func (s *Agent) Init(ctx context.Context) error {
 	if s.EnableAWSTool {
 		s.Tools.RegisterTool(tools.NewAWSTool())
 	}
+	if s.EnableClusterFanout {
+		s.Tools.RegisterTool(tools.NewClusterFanoutTool())
+	}
 
 	kubeContexts, err := loadKubeContextNames(ctx, s.Kubeconfig)
 	if err != nil {
 		log.Error(err, "Could not load kube contexts for system prompt, proceeding without context list")
 		kubeContexts = nil
 	}
+	s.kubeContexts = kubeContexts
 
 	var allSkills []skills.Skill
 	if s.SkillsRegistry != nil {
@@ -1012,6 +1039,9 @@ func (c *Agent) NewSession() (string, error) {
 		if c.EnableAWSTool {
 			c.Tools.RegisterTool(tools.NewAWSTool())
 		}
+		if c.EnableClusterFanout {
+			c.Tools.RegisterTool(tools.NewClusterFanoutTool())
+		}
 	}
 
 	if err := c.llmChat.Initialize(c.Session.ChatMessageStore.ChatMessages()); err != nil {
@@ -1146,10 +1176,17 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 		c.addMessageWithMetadata(api.MessageSourceModel, api.MessageTypeToolCallRequest, toolDescription, toolCallMetadata)
 
 		output, err := call.ParsedToolCall.InvokeTool(ctx, tools.InvokeToolOptions{
-			Kubeconfig: c.Kubeconfig,
-			WorkDir:    c.workDir,
-			Env:        c.EnvVars,
-			Identity:   c.Session.UserIdentity,
+			Kubeconfig:           c.Kubeconfig,
+			WorkDir:              c.workDir,
+			Env:                  c.EnvVars,
+			Identity:             c.Session.UserIdentity,
+			LLM:                  c.LLM,
+			Model:                c.Model,
+			Tools:                &c.Tools,
+			AvailableClusters:    c.kubeContexts,
+			FanoutMaxIterations:  c.FanoutMaxIterations,
+			FanoutMaxConcurrency: c.FanoutMaxConcurrency,
+			Progress:             c.fanoutProgress(call.FunctionCall.ID),
 		})
 
 		if err != nil {
@@ -1188,6 +1225,37 @@ func (c *Agent) DispatchToolCalls(ctx context.Context) error {
 		c.addMessageWithMetadata(api.MessageSourceAgent, api.MessageTypeToolCallResponse, payload, toolCallMetadata)
 	}
 	return nil
+}
+
+// fanoutProgress returns a callback that lets ClusterFanoutTool report
+// per-cluster progress through the same message channel/metadata mechanism
+// DispatchToolCalls already uses for ordinary tool calls
+// (addMessageWithMetadata with a "tool_call_id"). The Slack UI's existing
+// plan-card correlation is keyed off that metadata and matches anywhere in
+// its pending queue rather than requiring strict arrival order (see
+// pkg/ui/slack/stream.go's takePendingTask), so this renders as one row per
+// cluster with no UI-side changes needed — even though clusters run in
+// parallel and can finish out of order.
+//
+// parentCallID is the multi_cluster_query call's own tool-call ID; each
+// cluster is given a distinct, stable synthetic ID derived from it
+// (parentCallID + ":" + cluster) so its request and response always
+// correlate correctly regardless of how the goroutines interleave.
+func (c *Agent) fanoutProgress(parentCallID string) func(cluster, status, detail string) {
+	return func(cluster, status, detail string) {
+		metadata := map[string]string{"tool_call_id": parentCallID + ":" + cluster}
+		switch status {
+		case "started":
+			c.addMessageWithMetadata(api.MessageSourceModel, api.MessageTypeToolCallRequest,
+				fmt.Sprintf("Checking cluster %s: %s", cluster, detail), metadata)
+		case "done":
+			c.addMessageWithMetadata(api.MessageSourceAgent, api.MessageTypeToolCallResponse,
+				fmt.Sprintf("%s: %s", cluster, detail), metadata)
+		case "error":
+			c.addMessageWithMetadata(api.MessageSourceAgent, api.MessageTypeToolCallResponse,
+				fmt.Sprintf("%s: error - %s", cluster, detail), metadata)
+		}
+	}
 }
 
 // The key idea is to treat all tool calls to be executed atomically or not

@@ -216,6 +216,24 @@ env:
   #
   MAX_ITERATIONS: "20"
 
+  ## Answer questions that span multiple clusters ("check all clusters and
+  ## summarize") via a single, bounded, read-only, parallel fan-out instead of
+  ## the agent looping single-cluster turns with the user. See "Step 8" in
+  ## docs/cross_cluster_access.md. Recommended to pair with
+  ## SLACK_AGENT_ENABLED: "true" below so it renders as one Slack card instead
+  ## of one message per cluster.
+  #
+  ENABLE_CLUSTER_FANOUT: "true"
+
+  ## Model round-trips allowed per cluster inside a fan-out (independent of,
+  ## and much smaller than, MAX_ITERATIONS above). Max: 20.
+  #
+  FANOUT_MAX_ITERATIONS: "5"
+
+  ## How many clusters a fan-out investigates in parallel. Max: 10.
+  #
+  FANOUT_MAX_CONCURRENCY: "4"
+
   ## Render tool-call batches as a single Slack streaming "Plan" card instead of
   ## a sequence of separate messages. Requires the Slack app to have the
   ## "Agents & AI Apps" feature enabled at api.slack.com — verify this before
