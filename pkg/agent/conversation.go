@@ -1430,6 +1430,12 @@ func loadKubeContextNames(ctx context.Context, kubeconfigPath string) ([]string,
 			names = append(names, r.name)
 		}
 	}
+	// Results arrive off the channel in probe-completion order, which is
+	// nondeterministic run-to-run (parallel goroutines racing). Sort so the
+	// context list — shown in the system prompt, and used as
+	// multi_cluster_query's default fan-out target list — is stable rather
+	// than shuffled by timing noise.
+	sort.Strings(names)
 	return names, nil
 }
 
