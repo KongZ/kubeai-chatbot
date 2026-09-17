@@ -1,6 +1,5 @@
 ARG GO_VERSION="1.27.1"
 ARG AWS_CLI_VERSION="2.33.14"
-ARG GCLOUD_CLI_VERSION="530.0.0"
 ARG KUBECTL_VERSION="1.33.0"
 
 # Build executable binary
@@ -31,7 +30,6 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -v -o kubeai-ch
 FROM debian:bookworm-slim AS runtime
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG KUBECTL_VERSION
-ARG GCLOUD_CLI_VERSION
 ARG AWS_CLI_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 
