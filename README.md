@@ -57,21 +57,21 @@ The easiest way to set up your Slack app is using the provided manifest:
 
 ### General Application Settings
 
-| Variable               | Description                                                                                                       | Default              |
-| :--------------------- | :---------------------------------------------------------------------------------------------------------------- | :------------------- |
-| `SLACK_BOT_TOKEN`      | Slack Bot User OAuth Token                                                                                        | Required             |
-| `SLACK_SIGNING_SECRET` | Slack app Signing Secret                                                                                          | Required             |
-| `MODIFY_RESOURCES`     | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md))     | `none`               |
-| `KUBECONFIG`           | Path to your kubeconfig file                                                                                      | `$HOME/.kube/config` |
-| `LISTEN_ADDRESS`       | Address for the bot to listen on                                                                                  | `0.0.0.0:8888`       |
-| `AUTH_METHOD`          | Auth method (`SAML`, `OIDC`, or `NONE`)                                                                           | `NONE`               |
-| `SESSION_TYPE`         | Session storage (`postgres`, `filesystem`, `memory`)                                                              | `memory`             |
-| `LOG_LEVEL`            | Verbosity of logs (e.g., `2` for info)                                                                            | `1`                  |
-| `MAX_ITERATIONS`       | Max tool-call iterations the agent can take per turn before stopping and asking for more input                    | `20`                 |
-| `ENABLE_CLUSTER_FANOUT` | Answer cross-cluster questions ("check all clusters") via a bounded, parallel, read-only fan-out tool instead of looping single-cluster turns (see [Cross-Cluster Access, Step 8](docs/cross_cluster_access.md)) | `true`               |
-| `FANOUT_MAX_ITERATIONS` | Model round-trips allowed per cluster inside a fan-out (independent of, and much smaller than, `MAX_ITERATIONS`)  | `5`                   |
-| `FANOUT_MAX_CONCURRENCY` | How many clusters a fan-out investigates in parallel                                                            | `4`                   |
-| `SLACK_AGENT_ENABLED`  | Render tool calls as a single live-updating Slack plan card (see [Slack Agent Mode](docs/slack_agent_enabled.md)) | `false`              |
+| Variable                 | Description                                                                                                                                                                                                      | Default              |
+| :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
+| `SLACK_BOT_TOKEN`        | Slack Bot User OAuth Token                                                                                                                                                                                       | Required             |
+| `SLACK_SIGNING_SECRET`   | Slack app Signing Secret                                                                                                                                                                                         | Required             |
+| `MODIFY_RESOURCES`       | Resource modification mode: `none`, `allow`, or `auto` (see [Modification Modes](docs/modification_modes.md))                                                                                                    | `none`               |
+| `KUBECONFIG`             | Path to your kubeconfig file                                                                                                                                                                                     | `$HOME/.kube/config` |
+| `LISTEN_ADDRESS`         | Address for the bot to listen on                                                                                                                                                                                 | `0.0.0.0:8888`       |
+| `AUTH_METHOD`            | Auth method (`SAML`, `OIDC`, or `NONE`)                                                                                                                                                                          | `NONE`               |
+| `SESSION_TYPE`           | Session storage (`postgres`, `filesystem`, `memory`)                                                                                                                                                             | `memory`             |
+| `LOG_LEVEL`              | Verbosity of logs (e.g., `2` for info)                                                                                                                                                                           | `1`                  |
+| `MAX_ITERATIONS`         | Max tool-call iterations the agent can take per turn before stopping and asking for more input                                                                                                                   | `20`                 |
+| `ENABLE_CLUSTER_FANOUT`  | Answer cross-cluster questions ("check all clusters") via a bounded, parallel, read-only fan-out tool instead of looping single-cluster turns (see [Cross-Cluster Access, Step 8](docs/cross_cluster_access.md)) | `true`               |
+| `FANOUT_MAX_ITERATIONS`  | Model round-trips allowed per cluster inside a fan-out (independent of, and much smaller than, `MAX_ITERATIONS`)                                                                                                 | `5`                  |
+| `FANOUT_MAX_CONCURRENCY` | How many clusters a fan-out investigates in parallel                                                                                                                                                             | `4`                  |
+| `SLACK_AGENT_ENABLED`    | Render tool calls as a single live-updating Slack plan card (see [Slack Agent Mode](docs/slack_agent_enabled.md))                                                                                                | `false`              |
 
 ### General LLM Settings
 

@@ -18,8 +18,8 @@ This request spans more than one Kubernetes cluster. Do **not** attempt it yours
 
 Instead, call the `multi_cluster_query` tool **exactly once**:
 
-- `task`: a precise, self-contained description of what to check, written as if instructing a colleague who will only ever see one cluster. Include exactly what "the answer" looks like (a version string, a yes/no, a count, etc.) so every cluster's sub-investigation returns something directly comparable.
-- `clusters`: the specific context names the user named, if any. Omit this entirely to target every cluster you have access to.
+  - `task`: a precise, self-contained description of what to check, written as if instructing a colleague who will only ever see one cluster. Include exactly what "the answer" looks like (a version string, a yes/no, a count, etc.) so every cluster's sub-investigation returns something directly comparable.
+  - `clusters`: the specific context names the user named, if any. Omit this entirely to target every cluster you have access to.
 
 The tool runs one small, read-only, isolated investigation per cluster in parallel (bounded, so it stays fast and cheap regardless of how many clusters exist) and returns a `results` list of `{cluster, result, error}`. Wait for that result — do not try to run any further kubectl commands yourself to double check it.
 

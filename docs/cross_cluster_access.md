@@ -386,7 +386,7 @@ The single-context-per-response rule above is deliberate — but it also means t
 
 For that case, the bot has a dedicated `multi_cluster_query` tool: it runs one small, read-only, isolated investigation per cluster **in parallel**, bounded by a small iteration budget per cluster, and returns one result per cluster for a single combined answer — instead of the bot investigating clusters one at a time across several conversation turns.
 
-### User Query Examples
+### Cross-Cluster Query Examples
 
 ```sh
 Are we on Istio 1.29 across all clusters? Summarise in a table.
