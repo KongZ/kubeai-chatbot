@@ -583,6 +583,57 @@ func TestLoadKubeContextNames_ConnectivityCheck(t *testing.T) {
 	}
 }
 
+// TestLoadKubeContextNames_SortedRegardlessOfProbeOrder guards against a
+// real bug found while simulating the multi_cluster_query fan-out: results
+// arrive off the reachability-probe channel in completion order, which is
+// nondeterministic run-to-run — so the returned list (the system prompt's
+// context list, and multi_cluster_query's default fan-out target list) must
+// be sorted rather than shuffled by probe timing.
+func TestLoadKubeContextNames_SortedRegardlessOfProbeOrder(t *testing.T) {
+	// zebra responds slower than apple, so on an unsorted implementation the
+	// probe that finishes first (apple) would land first regardless of name.
+	zebra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer zebra.Close()
+	apple := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apple.Close()
+
+	kubeconfig := fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: %s
+  name: zebra-cluster
+- cluster:
+    server: %s
+  name: apple-cluster
+contexts:
+- context:
+    cluster: zebra-cluster
+  name: zebra-context
+- context:
+    cluster: apple-cluster
+  name: apple-context
+current-context: apple-context
+users: []
+`, zebra.URL, apple.URL)
+
+	path := writeKubeconfig(t, kubeconfig)
+
+	names, err := loadKubeContextNames(context.Background(), path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"apple-context", "zebra-context"}
+	if len(names) != len(want) || names[0] != want[0] || names[1] != want[1] {
+		t.Fatalf("expected sorted %v, got: %v", want, names)
+	}
+}
+
 func TestAgent_NewSession_NoDeadlock(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

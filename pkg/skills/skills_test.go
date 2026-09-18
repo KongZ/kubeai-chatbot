@@ -245,3 +245,21 @@ func TestRegistry_MatchNoMatch(t *testing.T) {
 	assert.Empty(t, r.Match("everything is fine today"))
 }
 
+// --- repo skills/ directory ---
+
+func TestLoadFromDir_MultiClusterSummarySkill(t *testing.T) {
+	loaded, err := LoadFromDir(filepath.Join("..", "..", "skills"))
+	require.NoError(t, err)
+
+	r := &Registry{}
+	for _, s := range loaded {
+		r.Register(s)
+	}
+
+	matched := r.Match("We're on Istio 1.29 right now, right? Can you check all the clusters you have access to and summarise in a table please.")
+	var names []string
+	for _, s := range matched {
+		names = append(names, s.Name)
+	}
+	assert.Contains(t, names, "multi-cluster-summary")
+}

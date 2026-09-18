@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KongZ/kubeai-chatbot/gollm"
 	"github.com/KongZ/kubeai-chatbot/pkg/api"
 	"github.com/KongZ/kubeai-chatbot/pkg/journal"
 	"github.com/google/uuid"
@@ -39,6 +40,18 @@ const (
 	WorkDirKey    ContextKey = "work_dir"
 	EnvKey        ContextKey = "env"
 	IdentityKey   ContextKey = "identity"
+
+	// The following keys are consumed only by ClusterFanoutTool, so that it can
+	// reach the LLM client and its sibling tools — a Tool's Run(ctx, args) has
+	// no other way to get at those. Set by Agent.DispatchToolCalls via
+	// InvokeToolOptions below.
+	FanoutLLMKey               ContextKey = "fanout_llm"
+	FanoutModelKey             ContextKey = "fanout_model"
+	FanoutToolsKey             ContextKey = "fanout_tools"
+	FanoutAvailableClustersKey ContextKey = "fanout_available_clusters"
+	FanoutMaxIterationsKey     ContextKey = "fanout_max_iterations"
+	FanoutMaxConcurrencyKey    ContextKey = "fanout_max_concurrency"
+	FanoutProgressKey          ContextKey = "fanout_progress"
 )
 
 func Lookup(name string) Tool {
@@ -76,6 +89,21 @@ func (t *Tools) AllTools() []Tool {
 		tools = append(tools, tool)
 	}
 	return tools
+}
+
+// withoutTool returns a copy of t with the named tool removed. Used by
+// ClusterFanoutTool to build the tool set it hands to each per-cluster
+// sub-conversation, so a sub-conversation can never call multi_cluster_query
+// itself (recursion guard).
+func (t *Tools) withoutTool(name string) *Tools {
+	filtered := &Tools{tools: make(map[string]Tool, len(t.tools))}
+	for n, tool := range t.tools {
+		if n == name {
+			continue
+		}
+		filtered.tools[n] = tool
+	}
+	return filtered
 }
 
 func (t *Tools) Names() []string {
@@ -141,6 +169,37 @@ type InvokeToolOptions struct {
 
 	// Identity allows passing user identity for impersonation.
 	Identity *api.Identity
+
+	// The following fields are consumed only by ClusterFanoutTool (the
+	// multi_cluster_query tool). They're harmless no-ops for every other
+	// tool, which never reads them.
+
+	// LLM is the language model client used to run one bounded, read-only
+	// sub-conversation per target cluster.
+	LLM gollm.Client
+
+	// Model is the model name to use for those sub-conversations.
+	Model string
+
+	// Tools is the full tool registry, so a per-cluster sub-conversation can
+	// dispatch its own tool calls (e.g. kubectl) the same way the top-level
+	// agent does.
+	Tools *Tools
+
+	// AvailableClusters is the list of reachable kubeconfig context names,
+	// used as the fan-out target list when the caller doesn't name specific
+	// clusters.
+	AvailableClusters []string
+
+	// FanoutMaxIterations caps the number of model round-trips per cluster.
+	FanoutMaxIterations int
+
+	// FanoutMaxConcurrency caps how many clusters are investigated at once.
+	FanoutMaxConcurrency int
+
+	// Progress, if set, is called as each cluster's investigation starts and
+	// finishes, so the UI can render per-cluster status.
+	Progress func(cluster, status, detail string)
 }
 
 type ToolRequestEvent struct {
@@ -177,6 +236,27 @@ func (t *ToolCall) InvokeTool(ctx context.Context, opt InvokeToolOptions) (any, 
 	ctx = context.WithValue(ctx, WorkDirKey, opt.WorkDir)
 	if opt.Identity != nil {
 		ctx = context.WithValue(ctx, IdentityKey, opt.Identity)
+	}
+	if opt.LLM != nil {
+		ctx = context.WithValue(ctx, FanoutLLMKey, opt.LLM)
+	}
+	if opt.Model != "" {
+		ctx = context.WithValue(ctx, FanoutModelKey, opt.Model)
+	}
+	if opt.Tools != nil {
+		ctx = context.WithValue(ctx, FanoutToolsKey, opt.Tools)
+	}
+	if opt.AvailableClusters != nil {
+		ctx = context.WithValue(ctx, FanoutAvailableClustersKey, opt.AvailableClusters)
+	}
+	if opt.FanoutMaxIterations > 0 {
+		ctx = context.WithValue(ctx, FanoutMaxIterationsKey, opt.FanoutMaxIterations)
+	}
+	if opt.FanoutMaxConcurrency > 0 {
+		ctx = context.WithValue(ctx, FanoutMaxConcurrencyKey, opt.FanoutMaxConcurrency)
+	}
+	if opt.Progress != nil {
+		ctx = context.WithValue(ctx, FanoutProgressKey, opt.Progress)
 	}
 
 	response, err := t.tool.Run(ctx, t.arguments)

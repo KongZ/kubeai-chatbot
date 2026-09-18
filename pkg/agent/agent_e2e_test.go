@@ -529,3 +529,118 @@ func TestAgentEndToEndClusterContextSwitchBlocked(t *testing.T) {
 		t.Errorf("expected exactly 1 tool run (the mismatched cluster-b call must be blocked), got %d", tool.runCount)
 	}
 }
+
+// noContextTool is a minimal fake tool that, unlike contextAwareTool, does
+// NOT implement tools.KubeContextExtractor — the same shape as
+// ClusterFanoutTool (multi_cluster_query). Used to prove that such a tool
+// is structurally exempt from the cluster-context-switch gate: it never
+// contributes a KubeContext, so analyzeToolCalls never sets one for it and
+// the gate in Run() has nothing to compare (see conversation.go:715-729).
+type noContextTool struct {
+	runCount int
+}
+
+func (t *noContextTool) Name() string        { return "multi_cluster_query" }
+func (t *noContextTool) Description() string { return "test stand-in for the fan-out tool" }
+func (t *noContextTool) FunctionDefinition() *gollm.FunctionDefinition {
+	return &gollm.FunctionDefinition{Name: "multi_cluster_query"}
+}
+func (t *noContextTool) Run(ctx context.Context, args map[string]any) (any, error) {
+	t.runCount++
+	return map[string]any{"results": []map[string]any{{"cluster": "a", "result": "ok"}}}, nil
+}
+func (t *noContextTool) IsInteractive(args map[string]any) (bool, error)  { return false, nil }
+func (t *noContextTool) CheckModifiesResource(args map[string]any) string { return "no" }
+
+// TestAgentEndToEndMultiClusterQueryBypassesContextGate proves the design
+// claim behind the fan-out tool: a tool that doesn't implement
+// KubeContextExtractor (multi_cluster_query, here stood in for by
+// noContextTool) never trips the "one cluster per response" gate, and
+// running it doesn't lock in a context that would then block an unrelated
+// single-cluster call later in the same response.
+func TestAgentEndToEndMultiClusterQueryBypassesContextGate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := sessions.NewInMemoryChatStore()
+	client := mocks.NewMockClient(ctrl)
+	chat := mocks.NewMockChat(ctrl)
+
+	client.EXPECT().StartChat(gomock.Any(), "test-model").Return(chat)
+	chat.EXPECT().Initialize(gomock.Any()).Return(nil)
+	chat.EXPECT().SetFunctionDefinitions(gomock.Any()).Return(nil)
+
+	// Turn 1: call multi_cluster_query (no context info at all).
+	// Turn 2: call kubectl_like against cluster-a — must NOT be blocked,
+	// proving turn 1 never locked in a context.
+	firstResp := chatWith(fCalls("multi_cluster_query", map[string]any{"task": "check something everywhere"}))
+	secondResp := chatWith(fakePart{calls: []gollm.FunctionCall{{ID: "2", Name: "kubectl_like", Arguments: map[string]any{"context": "cluster-a"}}}})
+	thirdResp := chatWith(fText("done"))
+
+	firstIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) { yield(firstResp, nil) })
+	secondIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) { yield(secondResp, nil) })
+	thirdIter := gollm.ChatResponseIterator(func(yield func(gollm.ChatResponse, error) bool) { yield(thirdResp, nil) })
+
+	gomock.InOrder(
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(firstIter, nil),
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(secondIter, nil),
+		chat.EXPECT().SendStreaming(gomock.Any(), gomock.Any()).Return(thirdIter, nil),
+	)
+	chat.EXPECT().WasTruncated().Return(false).AnyTimes()
+
+	fanoutTool := &noContextTool{}
+	kubectlLike := &contextAwareTool{}
+	var toolset tools.Tools
+	toolset.Init()
+	toolset.RegisterTool(fanoutTool)
+	toolset.RegisterTool(kubectlLike)
+
+	a := &Agent{
+		ChatMessageStore: store,
+		LLM:              client,
+		Model:            "test-model",
+		Tools:            toolset,
+		MaxIterations:    5,
+		ModifyResources:  ModifyResourcesModeAuto,
+		Session: &api.Session{
+			ID:               "test-session",
+			Name:             "Test Session",
+			ProviderID:       "p",
+			ModelID:          "m",
+			SlackUserID:      "U123",
+			AgentState:       api.AgentStateIdle,
+			CreatedAt:        time.Now(),
+			LastModified:     time.Now(),
+			ChatMessageStore: store,
+		},
+	}
+
+	if err := a.Init(ctx); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := a.Run(ctx, ""); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	recvMsg(t, ctx, a.Output) // initial user-input-request prompt
+	a.Input <- &api.UserInputResponse{Query: "check something on every cluster"}
+
+	finalMsg := recvUntil(t, ctx, a.Output, func(m *api.Message) bool {
+		return m.Type == api.MessageTypeText && m.Source == api.MessageSourceModel
+	})
+	if finalMsg == nil {
+		t.Fatalf("did not receive final model response")
+	}
+
+	// Both calls must have actually run — neither was blocked by the
+	// cluster-context-switch gate.
+	if fanoutTool.runCount != 1 {
+		t.Errorf("expected multi_cluster_query to run exactly once, got %d", fanoutTool.runCount)
+	}
+	if kubectlLike.runCount != 1 {
+		t.Errorf("expected the follow-up single-cluster call to run (not be blocked), got %d", kubectlLike.runCount)
+	}
+}

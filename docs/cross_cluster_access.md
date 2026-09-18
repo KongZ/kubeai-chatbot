@@ -380,6 +380,42 @@ The AI will:
 > confirm the switch instead of silently querying the second cluster. This is enforced in code, not
 > just prompted — ask again in the same conversation to let it proceed on the new context.
 
+## Step 8: Asking About Multiple Clusters at Once
+
+The single-context-per-response rule above is deliberate — but it also means the bot can't answer a question like *"check all clusters and summarize"* by just looping through contexts itself; that would burn through its iteration budget and turn one question into many back-and-forth Slack messages, one per cluster.
+
+For that case, the bot has a dedicated `multi_cluster_query` tool: it runs one small, read-only, isolated investigation per cluster **in parallel**, bounded by a small iteration budget per cluster, and returns one result per cluster for a single combined answer — instead of the bot investigating clusters one at a time across several conversation turns.
+
+### Cross-Cluster Query Examples
+
+```sh
+Are we on Istio 1.29 across all clusters? Summarise in a table.
+```
+
+```sh
+Compare the cert-manager version across every cluster you have access to.
+```
+
+```sh
+Check disk pressure on cluster-a and cluster-b and tell me which one is worse.
+```
+
+### Configuration
+
+```yaml
+env:
+  ENABLE_CLUSTER_FANOUT: "true"      # default: true
+  FANOUT_MAX_ITERATIONS: "5"          # model round-trips per cluster (default: 5, max: 20)
+  FANOUT_MAX_CONCURRENCY: "4"         # clusters investigated in parallel (default: 4, max: 10)
+```
+
+### Safety
+
+Every command a fan-out sub-investigation runs is **forced read-only**, regardless of the top-level `MODIFY_RESOURCES` setting (see [modification_modes.md](modification_modes.md)) — this tool is for checking and comparing, never for making changes. It also cannot recurse into itself, and each sub-investigation is locked to exactly one cluster context (a command missing or mismatching its assigned `--context` is rejected rather than silently falling back to a default).
+
+> [!TIP]
+> Pair `ENABLE_CLUSTER_FANOUT` with `SLACK_AGENT_ENABLED: "true"` (see [slack_agent_enabled.md](slack_agent_enabled.md)). With the agent-block/plan-card UI on, a fan-out across N clusters renders as **one** live-updating card with one row per cluster. Without it, each cluster's result still posts as its own classic Slack message — one message per cluster rather than a single card, though still far fewer than the many messages a fully manual per-cluster investigation would take.
+
 ### Verify Configuration
 
 Test the setup by running:
