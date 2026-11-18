@@ -78,7 +78,7 @@ The easiest way to set up your Slack app is using the provided manifest:
 | Variable                | Description                                                                                                                                                        | Default                  |
 | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------- |
 | `LLM_PROVIDER`          | Legacy LLM service provider (`gemini`, `openai`)                                                                                                                   | `gemini`                 |
-| `MODEL_ID`              | Specific LLM model to use                                                                                                                                          | `gemini-3-flash-preview` |
+| `MODEL_ID`              | LLM model to use. Accepts a comma-separated list; on a 429 quota error it switches to the next model                                                               | `gemini-3-flash-preview` |
 | `LLM_SKIP_VERIFY_SSL`   | Skip SSL certificate verification (set to `1` or `true`)                                                                                                           | `false`                  |
 | `LLM_MAX_HISTORY_ITEMS` | Maximum number of conversation history entries sent per request. `0` disables the limit. See [Context Management](docs/context_management.md) for sizing guidance. | `0` (unlimited)          |
 

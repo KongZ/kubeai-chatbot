@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
@@ -194,6 +195,10 @@ func (c *OllamaChat) Send(ctx context.Context, contents ...any) (ChatResponse, e
 	log.Info("ollama response", "parsed_response", ollamaResponse)
 	return ollamaResponse, nil
 }
+
+func (c *OllamaChat) setModel(model string) { c.model = model }
+func (c *OllamaChat) snapshotHistory() any  { return slices.Clone(c.history) }
+func (c *OllamaChat) restoreHistory(s any)  { c.history = s.([]api.Message) }
 
 func (c *OllamaChat) IsRetryableError(err error) bool {
 	// TODO(droot): Implement this

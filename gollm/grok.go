@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -210,6 +211,12 @@ func (cs *grokChatSession) SetFunctionDefinitions(defs []*FunctionDefinition) er
 	}
 	klog.V(1).Infof("Set %d function definitions for Grok chat session", len(cs.functionDefinitions))
 	return nil
+}
+
+func (cs *grokChatSession) setModel(model string) { cs.model = model }
+func (cs *grokChatSession) snapshotHistory() any  { return slices.Clone(cs.history) }
+func (cs *grokChatSession) restoreHistory(s any) {
+	cs.history = s.([]openai.ChatCompletionMessageParamUnion)
 }
 
 // Send sends the user message(s), appends to history, and gets the LLM response.

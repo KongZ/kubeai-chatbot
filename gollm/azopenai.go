@@ -232,6 +232,12 @@ type AzureOpenAIChat struct {
 	tools   []azopenai.ChatCompletionsToolDefinitionClassification
 }
 
+func (c *AzureOpenAIChat) setModel(model string) { c.model = model }
+func (c *AzureOpenAIChat) snapshotHistory() any  { return slices.Clone(c.history) }
+func (c *AzureOpenAIChat) restoreHistory(s any) {
+	c.history = s.([]azopenai.ChatRequestMessageClassification)
+}
+
 func (c *AzureOpenAIChat) Send(ctx context.Context, contents ...any) (ChatResponse, error) {
 	for _, content := range contents {
 		switch v := content.(type) {

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	openai "github.com/openai/openai-go"
@@ -866,6 +867,12 @@ func convertToolCallsToFunctionCalls(toolCalls []openai.ChatCompletionMessageToo
 		})
 	}
 	return calls, len(calls) > 0
+}
+
+func (cs *openAIChatSession) setModel(model string) { cs.model = model }
+func (cs *openAIChatSession) snapshotHistory() any  { return slices.Clone(cs.history) }
+func (cs *openAIChatSession) restoreHistory(s any) {
+	cs.history = s.([]openai.ChatCompletionMessageParamUnion)
 }
 
 // getOpenAIModel returns the appropriate model based on configuration and explicitly provided model name
