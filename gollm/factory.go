@@ -118,7 +118,11 @@ func (r *registry) NewClient(ctx context.Context, providerID string, opts ...Opt
 		opt(&clientOpts)
 	}
 
-	return factoryFunc(ctx, clientOpts)
+	client, err := factoryFunc(ctx, clientOpts)
+	if err != nil {
+		return nil, err
+	}
+	return withModelFallback(client), nil
 }
 
 /*

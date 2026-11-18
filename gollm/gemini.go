@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -821,6 +822,10 @@ func (r *GeminiCompletionResponse) UsageMetadata() any {
 func (r *GeminiCompletionResponse) String() string {
 	return fmt.Sprintf("{text=%q}", r.text)
 }
+
+func (c *GeminiChat) setModel(model string) { c.model = model }
+func (c *GeminiChat) snapshotHistory() any  { return slices.Clone(c.history) }
+func (c *GeminiChat) restoreHistory(s any)  { c.history = s.([]*genai.Content) }
 
 func (c *GeminiChat) IsRetryableError(err error) bool {
 	if err == nil {

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/responses"
@@ -67,6 +68,15 @@ func (cs *openAIResponseChatSession) SetFunctionDefinitions(defs []*FunctionDefi
 	}
 	klog.V(1).Infof("Set %d function definitions for OpenAI chat session", len(cs.functionDefinitions))
 	return nil
+}
+
+func (cs *openAIResponseChatSession) setModel(model string) {
+	cs.model = model
+	cs.params.Model = model
+}
+func (cs *openAIResponseChatSession) snapshotHistory() any { return slices.Clone(cs.history) }
+func (cs *openAIResponseChatSession) restoreHistory(s any) {
+	cs.history = s.(responses.ResponseInputParam)
 }
 
 // Send sends the user message(s), appends to history, and gets the LLM response.

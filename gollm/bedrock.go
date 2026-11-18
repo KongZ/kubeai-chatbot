@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -724,6 +725,10 @@ func (p *bedrockToolPart) AsFunctionCalls() ([]FunctionCall, bool) {
 }
 
 // Helper functions
+
+func (c *bedrockChat) setModel(model string) { c.model = model }
+func (c *bedrockChat) snapshotHistory() any  { return slices.Clone(c.messages) }
+func (c *bedrockChat) restoreHistory(s any)  { c.messages = s.([]types.Message) }
 
 // getBedrockModel returns the model to use, checking in order:
 // 1. Explicitly provided model
